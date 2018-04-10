@@ -10,14 +10,18 @@ from odoo.tools import DEFAULT_SERVER_DATETIME_FORMAT as DATETIME_FORMAT
 
 _logger = logging.getLogger(__name__)
 
-DEFAULT_ERROR = _('Unknown Error')
+UNKNOWN_ERROR = _("Unknown error when updating res.partner data")
 
 ERROR_MESSAGE = {
-    'title_error': _('Can not find title: {}'),
-    'country_error': _('Can not find country_iso_code: {}'),
-    'no_parameter': _('Does not have the expected field: {}'),
-    'valid_parameter_type': _('Invalid parameter type: {} expected {}'),
-    'parameter_singleton': _('Expected singleton: {}'),
+    'title_error': _("This title doesn't exist in ODOO: {}"),
+    'country_error': _("This country_iso_code doesn't exist in ODOO: {}"),
+    'missed_required_parameter': _(
+        "Wrong CiviCRM request - missed required field: {}"),
+    'invalid_parameter_type': _(
+        "Wrong CiviCRM request - invalid \"{}\" parameter "
+        "data type: {} expected {}"),
+    'duplicated_partner_with_contact_id': _(
+        "You cannot have two partners with the same civicrm Id"),
 }
 
 
@@ -28,102 +32,16 @@ class ResPartner(models.Model):
                                   help='Civicrm Id')
     _sql_constraints = [
         ('x_civicrm_id', 'unique(x_civicrm_id)',
-         'Two partner with the same x_civicrm_id? Impossible!')
+         ERROR_MESSAGE['duplicated_partner_with_contact_id'])
     ]
-
-    @staticmethod
-    def timestamp_from_string(date_time):
-        """ Converts string in datetime format to timestamp
-         :param date_time: str, string in datetime format
-         :return: float, timestamp
-        """
-        dt = datetime.strptime(date_time, DATETIME_FORMAT)
-        return time.mktime(dt.timetuple())
-
-    def lookup_title_and_country_id(self):
-        """ Lookups the ODOO ids for contact title and country_iso_code
-         If id is present assign it to parent object
-         Else return error message
-        """
-        title = self.vals.get('title')
-        country_iso_code = self.vals.get('country_iso_code')
-        if title:
-            title_id = self.env['res.partner.title'].search(
-                ['|', ('name', '=', str(title)),
-                 ('shortcut', '=', str(title))]).id
-            if not title_id:
-                self.error_log.append(
-                    ERROR_MESSAGE.get('title_error', DEFAULT_ERROR).format(
-                        title))
-            else:
-                self.vals.update(title=title_id)
-
-        if country_iso_code:
-            country_id = self.env['res.country'].search(
-                [('code', '=', str(country_iso_code))]).id
-            if not country_id:
-                self.error_log.append(
-                    ERROR_MESSAGE.get('country_error', DEFAULT_ERROR).format(
-                        country_iso_code))
-            else:
-                self.vals.update(country_id=country_id)
-
-        _logger.debug(
-            'country_id = {}, title_id={}'.format(country_id, title_id))
-
-    def save_partner(self, partner):
-        """Creates or updates res.partner
-         :param partner: res.partner object which want to update
-        """
-        status = True
-        try:
-            # Create or update res.partner
-            if partner:
-                status = partner.write(self.vals)
-            else:
-                partner = self.create(self.vals)
-                self.response_data.update(partner_id=partner.id)
-
-            if not (partner or status):
-                self.error_log.append(DEFAULT_ERROR)
-                return
-
-            timestamp = self.timestamp_from_string(partner.write_date)
-            self.response_data.update(timestamp=int(timestamp))
-
-        except Exception as error:
-            _logger.error(error)
-            self.error_log.append(str(error))
-            self.error_hendler()
-
-    def error_hendler(self):
-        """Checks for errors and change response_data if exist
-         :return: True if error else False
-        """
-        is_error = 1
-        if self.error_log:
-            self.response_data.update(is_error=is_error,
-                                      error_log=self.error_log)
-            return True
-        return False
-
-    def convert_timestamp_param(self, **kwargs):
-        """Converts parameter from timestamp in string by parameter key
-         :param kwargs: dictionary with value for conversion
-         :return: str in DATETIME_FORMAT
-        """
-        timestamp = kwargs.get('value')
-        try:
-            return datetime.fromtimestamp(timestamp).strftime(DATETIME_FORMAT)
-        except Exception as error:
-            _logger.error(error)
-            self.error_log.append(str(error))
-            self.error_hendler()
 
     @api.model
     def civicrm_sync(self, input_params):
-        """Synchronizes ODOO and CiviCRM.
-         Creates or updates res.partner and returns response
+        """Synchronizes CiviCRM contact to Odoo partner.
+         Creates new partners if not exists and updates is it is
+         present in Odoo. Returns back to CiviCRM assigned partner_id and
+         update_date and data processing status.
+
          :param input_params: dict of data:{
                                 'is_company': bool,
                                 'x_civicrm_id': int,
@@ -146,95 +64,193 @@ class ResPartner(models.Model):
                                 'customer': bool
                                 }
          :return: data in dictionary format: {
-                                'is_error': int, 0 when successful and 1 when failed
-                                'error_log': str, present when is_error is 1 and should catch the error information
-                                'contact_id': int, the id of the synced contact record
-                                'partner_id': int, the id of the corresponding partner record in Odoo
-                                'timestamp': float, the timestamp when the respond is made
+                                'is_error': int, value from list [0, 1]
+                                'error_log': str, not empty when is_error = 1
+                                'contact_id': int, CiviCRM contact_id
+                                'partner_id': int, Odoo partner_id
+                                'timestamp': float, respond timestamp
                                 }
         """
         self.error_log = []
-        self.response_data = {'is_error': 0}
-        self.vals = input_params
-        if not self.validate_input_params(self.vals):
-            return self.get_response()
-
-        x_civicrm_id = self.vals.get('x_civicrm_id')
 
         # Build response dictionary
-        self.response_data.update(contact_id=x_civicrm_id)
+        self.response_data = {'is_error': 0}
 
-        # Check if CiviCRM contact's id exists in ODOO
-        partner = self.search([('x_civicrm_id', '=', x_civicrm_id)])
+        # Validate CiviCRM input request structure and data
+        if not self._validate_civicrm_sync_input_params(input_params):
+            return self._get_civicrm_sync_response()
 
-        if len(partner) > 1:
-            self.error_log.append(
-                ERROR_MESSAGE['parameter_singleton'].format(partner))
-            return self.get_response()
+        # Check if CiviCRM contact id exists in ODOO
+        partner = self.with_context(active_test=False).search(
+            [('x_civicrm_id', '=', self.vals.get('x_civicrm_id'))])
 
+        # Assign ODOO partner_id if exists
         self.response_data.update(partner_id=partner.id)
 
         _logger.debug('partner = {}'.format(partner))
 
-        # Check if CiviCMR contact's title and country_iso_code exists
-        # and have appropriated ids in ODOO
-        self.lookup_title_and_country_id()
-
-        # Check for errors and return response with error if exist
-        if self.error_log:
-            return self.get_response()
-
-        # Create or update res.partner
+        # Create or update res.partner data
         self.save_partner(partner)
 
-        return self.get_response()
+        return self._get_civicrm_sync_response()
 
-    def get_response(self):
-        """Checks errors and return dictionary response
-         :return: response in dictionary format
-        """
-        self.error_hendler()
-        return self.response_data
-
-    def validate_input_params(self):
-        """Checks that we get all required parameters in appropriate data type
+    def _validate_civicrm_sync_input_params(self, input_params):
+        """Validates input parameters structure and data type
          :param input_params: dictionary of input parameters
-         :return: True if valid else False
+         :return: validation status True or False
         """
-        ParamType = namedtuple('Point', ['type', 'required', 'convert_method'])
+        self.vals = input_params
+        ParamType = namedtuple('Point', ['type', 'required',
+                                         'convert_method', 'default'])
         param_map = {
-            'is_company': ParamType(bool, True, None),
-            'x_civicrm_id': ParamType(int, False, None),
-            'name': ParamType(str, True, None),
-            'display_name': ParamType(str, True, None),
-            'title': ParamType(str, False, None),
-            'street': ParamType(str, False, None),
-            'street2': ParamType(str, False, None),
-            'city': ParamType(str, False, None),
-            'zip': ParamType(str, False, None),
-            'country_iso_code': ParamType(str, False, None),
-            'website': ParamType(str, False, None),
-            'phone': ParamType(str, False, None),
-            'mobile': ParamType(str, False, None),
-            'fax': ParamType(str, False, None),
-            'email': ParamType(str, True, None),
-            'create_date': ParamType(int, False, self.convert_timestamp_param),
-            'write_date': ParamType(int, False, self.convert_timestamp_param),
-            'active': ParamType(bool, True, None),
-            'customer': ParamType(bool, True, None)
+            'is_company': ParamType(bool, True, None, None),
+            'x_civicrm_id': ParamType(int, False, None, None),
+            'name': ParamType(str, True, None, None),
+            'display_name': ParamType(str, True, None, None),
+            'title': ParamType(str, False, None, None),
+            'street': ParamType(str, False, None, None),
+            'street2': ParamType(str, False, None, None),
+            'city': ParamType(str, False, None, None),
+            'zip': ParamType(str, False, None, None),
+            'country_iso_code': ParamType(str, False, None, None),
+            'website': ParamType(str, False, None, None),
+            'phone': ParamType(str, False, None, None),
+            'mobile': ParamType(str, False, None, None),
+            'fax': ParamType(str, False, None, None),
+            'email': ParamType(str, True, None, None),
+            'create_date': ParamType((int, str), False,
+                                     self.convert_timestamp_param, None),
+            'write_date': ParamType((int, str), False,
+                                    self.convert_timestamp_param, None),
+            'active': ParamType(bool, True, None, None),
+            'customer': ParamType(bool, True, None, True)
         }
 
         for key, param_type in param_map.items():
-            value = self.vals.get(key)
-            if value is None and param_type.required:
-                self.error_log.append(ERROR_MESSAGE['no_parameter'].format(key))
-            elif not isinstance(value, param_type):
-                self.error_log.append(ERROR_MESSAGE['valid_parameter_type']
-                                      .format(key, param_type))
+            value = self.vals.get(key, param_type.default)
+            if param_type.required and value is None:
+                self.error_log.append(ERROR_MESSAGE[
+                    'missed_required_parameter'].format(
+                    key))
+            elif not isinstance(value, param_type.type):
+                self.error_log.append(ERROR_MESSAGE['invalid_parameter_type']
+                                      .format(key, type(value),
+                                              param_type.type))
+
+            x_civicrm_id = self.vals.get('x_civicrm_id')
+
+            # Assign CiviCRM contact_id
+            self.response_data.update(contact_id=x_civicrm_id)
 
             if value and param_type.convert_method:
                 new_param = param_type.convert_method(key=key, value=value)
                 _logger.debug(new_param)
                 self.vals[key] = new_param
 
+        # Check if CiviCMR contact's title and country_iso_code exists
+        # and have appropriated ids in ODOO
+        self.lookup_country_id()
+        self.lookup_title_id()
+
         return False if self.error_log else True
+
+    def convert_timestamp_param(self, **kwargs):
+        """Converts timestamp parameter into datetime string according
+         :param kwargs: dictionary with value for conversion
+         :return: str in DATETIME_FORMAT
+        """
+        timestamp = kwargs.get('value')
+        try:
+            return datetime.fromtimestamp(timestamp).strftime(DATETIME_FORMAT)
+        except Exception as error:
+            _logger.error(error)
+            self.error_log.append(str(error))
+            self.error_handler()
+
+    def _get_civicrm_sync_response(self):
+        """Checks errors and return dictionary response
+         :return: response in dictionary format
+        """
+        self.error_handler()
+        return self.response_data
+
+    def error_handler(self):
+        """Checks for errors and change response_data if exist
+         :return: True if error else False
+        """
+        is_error = 1
+        if self.error_log:
+            self.response_data.update(is_error=is_error,
+                                      error_log=self.error_log)
+            return True
+        return False
+
+    def lookup_country_id(self):
+        """ Lookups the ODOO ids for contact country_iso_code
+         If id is present assign it to parent object
+         Else return error message
+        """
+        country_iso_code = self.vals.get('country_iso_code')
+        if country_iso_code:
+            country_id = self.env['res.country'].search(
+                [('code', '=', str(country_iso_code))]).id
+            if not country_id:
+                self.error_log.append(
+                    ERROR_MESSAGE.get('country_error', UNKNOWN_ERROR).format(
+                        country_iso_code))
+            else:
+                self.vals.update(country_id=country_id)
+
+    def lookup_title_id(self):
+        """ Lookups the ODOO ids for contact title
+         If id is present assign it to parent object
+         Else return error message
+        """
+        title = self.vals.get('title')
+        if title:
+            title_id = self.env['res.partner.title'].search(
+                ['|', ('name', '=', str(title)),
+                 ('shortcut', '=', str(title))]).id
+            if not title_id:
+                self.error_log.append(
+                    ERROR_MESSAGE.get('title_error', UNKNOWN_ERROR).format(
+                        title))
+            else:
+                self.vals.update(title=title_id)
+
+    def save_partner(self, partner):
+        """Creates or updates res.partner
+         :param partner: res.partner object which want to update
+        """
+        status = True
+        try:
+            # Create or update res.partner
+            if partner:
+                status = partner.write(self.vals)
+            else:
+                partner = self.create(self.vals)
+
+                # Assign CiviCRM partner_id
+                self.response_data.update(partner_id=partner.id)
+
+            if not (partner or status):
+                self.error_log.append(UNKNOWN_ERROR)
+                return
+
+            # Assign CiviCRM timestamp
+            timestamp = self.timestamp_from_string(partner.write_date)
+            self.response_data.update(timestamp=int(timestamp))
+
+        except Exception as error:
+            _logger.error(error)
+            self.error_log.append(str(error))
+            self.error_handler()
+
+    @staticmethod
+    def timestamp_from_string(date_time):
+        """ Converts string in datetime format to timestamp
+         :param date_time: str, string in datetime format
+         :return: float, timestamp
+        """
+        dt = datetime.strptime(date_time, DATETIME_FORMAT)
+        return time.mktime(dt.timetuple())

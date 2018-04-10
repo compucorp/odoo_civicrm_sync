@@ -19,35 +19,35 @@ msgstr ""
 
 #. module: odoo_civicrm_sync
 #: code:addons/odoo_civicrm_sync/models/res_partner.py:13
-msgid "Unknown Error"
+msgid "Unknown error when updating res.partner data"
 msgstr ""
 
 #. module: odoo_civicrm_sync
 #: code:addons/odoo_civicrm_sync/models/res_partner.py:16
 #, python-format
-msgid "Can not find title: {}"
+msgid "This title doesn't exist in ODOO: {}"
 msgstr ""
 
 #. module: odoo_civicrm_sync
 #: code:addons/odoo_civicrm_sync/models/res_partner.py:17
 #, python-format
-msgid "Can not find country_iso_code: {}"
-msgstr ""
-
-#. module: odoo_civicrm_sync
-#: code:addons/odoo_civicrm_sync/models/res_partner.py:18
-#, python-format
-msgid "Does not have the expected field: {}"
+msgid "This country_iso_code doesn\'t exist in ODOO: {}"
 msgstr ""
 
 #. module: odoo_civicrm_sync
 #: code:addons/odoo_civicrm_sync/models/res_partner.py:19
 #, python-format
-msgid "Invalid parameter type: {} expected {}"
+msgid "Wrong CiviCRM request - missed required field: {}"
 msgstr ""
 
 #. module: odoo_civicrm_sync
-#: code:addons/odoo_civicrm_sync/models/res_partner.py:20
+#: code:addons/odoo_civicrm_sync/models/res_partner.py:21
 #, python-format
-msgid "Expected singleton: {}"
+msgid "Wrong CiviCRM request - invalid \"{}\" parameter data type: {} expected {}"
+msgstr ""
+
+#. module: odoo_civicrm_sync
+#: code:addons/odoo_civicrm_sync/models/res_partner.py:24
+#, python-format
+msgid "You cannot have two partners with the same civicrm Id"
 msgstr ""
