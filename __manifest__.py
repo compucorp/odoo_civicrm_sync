@@ -11,6 +11,11 @@
     "maintainer": "Compucorp Ltd.",
     "depends": [
         "base",
+        "account",
+        "product",
+    ],
+    'data': [
+        'data/product_data.xml',
     ],
     "application": True,
 }
