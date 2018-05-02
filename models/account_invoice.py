@@ -35,7 +35,6 @@ LOOK_UP_MAP = {
     'invoice_civicrm_id': ('account.invoice', 'x_civicrm_id', 'x_civicrm_id'),
     'invoice_line_civicrm_id': ('account.invoice.line', 'x_civicrm_id',
                                 'x_civicrm_id'),
-    # 'payment_civicrm_id': ('account.payment', 'x_civicrm_id', 'x_civicrm_id'),
 }
 
 
@@ -55,11 +54,11 @@ class AccountInvoice(models.Model):
     @api.model
     def civicrm_sync(self, input_params):
         """Synchronizes CiviCRM Contributions to Odoo invoice.
-         Creates new invoice if not exists and updates is it is
+         Creates new invoice if not exists and updates it if it is not
          present in Odoo. Returns back to CiviCRM assigned invoice_id and
          update_date and data processing status.
         """
-        _logger.debug('Start Invoice civicrm_sync')
+        _logger.debug('Start CiviCRM contribution to invoice syncing')
 
         self.error_log = []
 
@@ -84,7 +83,7 @@ class AccountInvoice(models.Model):
 
         try:
 
-            # Create and post new invoise if not exist
+            # Create and post new invoice if not exist
             if not invoice:
                 invoice = self.save_new_invoice()
                 self.line_items_handling()
