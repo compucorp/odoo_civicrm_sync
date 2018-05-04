@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 
+import json
 import logging
 import time
 from collections import namedtuple
 from datetime import datetime
 
 from odoo import api, fields, models, _
-from odoo.exceptions import UserError
 from odoo.tools import DEFAULT_SERVER_DATETIME_FORMAT as DATETIME_FORMAT
 
 _logger = logging.getLogger(__name__)
@@ -58,63 +58,52 @@ class AccountInvoice(models.Model):
          present in Odoo. Returns back to CiviCRM assigned invoice_id and
          update_date and data processing status.
         """
-        _logger.debug('Start CiviCRM contribution to invoice syncing')
-
-        self.error_log = []
-
-        # Build response dictionary
-        self.response_data = {'is_error': 0}
-        if not self._validate_civicrm_sync_input_params(input_params):
-            return self._get_civicrm_sync_response()
-        _logger.debug('valid data = {}'.format(self.vals))
-
-        x_civicrm_invice_id = self.vals.get('x_civicrm_id')
-
-        # Assign ODOO contribution_id if exists
-        self.response_data.update(contribution_id=x_civicrm_invice_id)
-
-        # Check if CiviCRM contribution_id exists in ODOO
-        invoice = self.with_context(active_test=False).search(
-            [('x_civicrm_id', '=', x_civicrm_invice_id)], order='id desc',
-            limit=1)
-        _logger.debug('invoice = {}'.format(invoice))
-        invoice_state = invoice.state
-        _logger.debug('invoice_state = {}'.format(invoice_state))
-
         try:
+            _logger.debug('Start CiviCRM contribution to invoice syncing')
+
+            self.error_log = []
+
+            # Build response dictionary
+            self.response_data = {'is_error': 0}
+            if not self._validate_civicrm_sync_input_params(input_params):
+                return self._get_civicrm_sync_response()
+
+            x_civicrm_invice_id = self.vals.get('x_civicrm_id')
+
+            # Assign ODOO contribution_id if exists
+            self.response_data.update(contribution_id=x_civicrm_invice_id)
+
+            # Check if CiviCRM contribution_id exists in ODOO
+            invoice = self.with_context(active_test=False).search(
+                [('x_civicrm_id', '=', x_civicrm_invice_id)], order='id desc',
+                limit=1)
+
+            invoice_state = invoice.state
 
             # Create and post new invoice if not exist
             if not invoice:
                 invoice = self.save_new_invoice()
-                self.line_items_handling()
-                invoice.compute_taxes()
-                invoice.action_invoice_open()
-                return self._get_civicrm_sync_response()
+                self._invoice_open(invoice)
 
-            if invoice_state in ('draft',):
-                self.line_items_handling()
-                invoice.compute_taxes()
-                invoice.action_invoice_open()
-                return self._get_civicrm_sync_response()
+            # Start line items handling if invoice not posted
+            elif invoice_state in ('draft',):
+                self._invoice_open(invoice)
 
             # Start line items match
-            if not self.match_lines(invoice):
+            elif not self.match_lines(invoice):
                 # If no, unreconcile and cancel the invoice.
                 # Create a new one and do Line Items Handling.
                 # Posted invoice
                 # Re-reconcile the payments with the new invoice
-
-                self.move_id.reverse_moves(invoice)
+                invoice.move_id.line_ids.remove_move_reconcile()
                 invoice.action_invoice_cancel()
                 invoice = self.save_new_invoice()
-                self.line_items_handling()
-                invoice.compute_taxes()
-                invoice.action_invoice_open()
+                self._invoice_open(invoice)
+                invoice.re_reconcile_payment()
 
             self.status_and_payment_handling()
 
-        except UserError as error:
-            _logger.error(error)
+        except Exception as error:
             self.error_log.append(str(error))
             self.error_handler()
 
@@ -232,21 +221,23 @@ class AccountInvoice(models.Model):
         vals = kwargs.get('vals')
 
         model, field, res = LOOK_UP_MAP.get(key)
+        if not value:
+            del vals[key]
+            return
         ids = self._lookup_id(key, value, model, field)
         del vals[key]
         if not ids:
             return
         vals[res] = [(6, 0, ids)]
 
-    def _lookup_id(self, key, value, model, field, error_ignore=False):
+    def _lookup_id(self, key, value, model, field):
         """ Lookups the ODOO ids
          If id exists assign it to parent object
          Else returns error message
          :param key: key for value in input params
          :param value: value to search
-         :param model: ODOO model in which to search
+         :param model: target ODOO model to search
          :param field: field name from ODOO model to search
-         :param error_ignore: ignore error flag
          :return: row ids
         """
         _logger.debug('lookup {} {} {}'.format(model, field, value))
@@ -261,16 +252,27 @@ class AccountInvoice(models.Model):
             return
         return ids
 
+    def convert_timestamp_param(self, **kwargs):
+        """ Converts timestamp parameter into datetime string according
+         :param kwargs: dictionary with value for conversion
+         :return: str in DATETIME_FORMAT
+        """
+        timestamp = kwargs.get('value')
+        key = kwargs.get('key')
+        vals = kwargs.get('vals')
+        try:
+            vals[key] = datetime.fromtimestamp(timestamp).strftime(
+                DATETIME_FORMAT)
+        except Exception as error:
+            _logger.error(error)
+            self.error_log.append(str(error))
+            self.error_handler()
+
     def save_new_invoice(self):
         """ Creates new invoice
          :return: invoice object
         """
-        _logger.debug('start save new incvoice')
         invoice = self.create(self.vals)
-        _logger.debug('create invoice = {}'.format(invoice))
-        lines = self.vals.get('line_items')
-        for line in lines:
-            self.create_line(line, invoice.id)
         return invoice
 
     def create_line(self, line, invoice_id):
@@ -280,12 +282,40 @@ class AccountInvoice(models.Model):
         """
         invoice_line = self.env['account.invoice.line']
         line.update(invoice_id=invoice_id)
-        line_invoice = invoice_line.create(line)
-        _logger.debug('create line = {}'.format(line_invoice))
+        return invoice_line.create(line)
 
-    # TODO in COS-24
-    def line_items_handling(self):
-        pass
+    def _invoice_open(self, invoice):
+        """ Handles line items, computes taxes and open invoice
+         :param invoice: invoice object
+        """
+        self.line_items_handling(invoice)
+        invoice.compute_taxes()
+        invoice.action_invoice_open()
+
+    def line_items_handling(self, invoice):
+        """ Creates/updates or deletes invoice line
+         :param invoice: invoice object
+        """
+        lines = self.vals.get('line_items')
+        line_civicrm_id = set(line.get('x_civicrm_id') for line in lines)
+        for line in lines:
+            x_civicrm_id = line.get('x_civicrm_id')
+            invoice_line = invoice.invoice_line_ids.filtered(
+                lambda invoice_line: invoice_line.x_civicrm_id == x_civicrm_id)
+
+            if not invoice_line:
+                self.create_line(line, invoice.id)
+                continue
+
+            if not self.match_line(line, invoice_line):
+                self.update_line(line, invoice_line, invoice.id)
+
+        line_to_delete = invoice.invoice_line_ids.filtered(
+            lambda invoice_line: invoice_line.x_civicrm_id not in
+                                 line_civicrm_id)
+
+        for line in line_to_delete:
+            line.unlink()
 
     def match_line(self, match_line, line):
         """ Compares invoice line items
@@ -306,8 +336,6 @@ class AccountInvoice(models.Model):
         :param invoice_line: account.invoice.line to update
         :param invoice_id: relation invoice id
         """
-        _logger.debug(
-            'update line = {} ,invoice_line ={}'.format(line, invoice_line))
         line.update(invoice_id=invoice_id)
         if not invoice_line.write(line):
             self.error_log.append(UNKNOWN_ERROR)
@@ -315,10 +343,9 @@ class AccountInvoice(models.Model):
     def match_lines(self, invoice):
         """ Checks the if exact same invoices lines exist in the last matched
          invoice in Odoo as per CiviCRM contribution
-         :param invoice:
+         :param invoice:  invoice object
          :return: True if line is the same, otherwise False
         """
-        _logger.debug('start match_line')
         new_lines = self.vals.get('line_items')
         if len(invoice.invoice_line_ids) != len(new_lines):
             return False
@@ -346,10 +373,9 @@ class AccountInvoice(models.Model):
     def _match_values(first, second):
         """ Matchs two values
          :param first: first value
-         :param second: second first value
-         :return: True if match, False if not
+         :param second: second value
+         :return: True if match, otherwise False
         """
-        _logger.debug('MATCHING {} == {}'.format(first, second))
         return True if first == second else False
 
     @staticmethod
@@ -359,7 +385,6 @@ class AccountInvoice(models.Model):
          :param field: field type or name
          :return: extract value
         """
-        _logger.debug('value = {} field = {}'.format(value, field))
         if isinstance(value, models.Model):
             if field.type == 'many2one':
                 return value.id
@@ -371,6 +396,17 @@ class AccountInvoice(models.Model):
             return value[-1][-1]
         return value
 
+    @api.multi
+    def re_reconcile_payment(self):
+        """ Re-reconciles with the invoice """
+        for invoice in self:
+            invoice._get_outstanding_info_JSON()
+            outstanding_JSON = invoice.outstanding_credits_debits_widget
+            if invoice.has_outstanding:
+                outstanding = json.loads(outstanding_JSON)
+                for content in outstanding['content']:
+                    invoice.assign_outstanding_credit(content['id'])
+
     # TODO in COS-25
     def status_and_payment_handling(self):
         pass
@@ -380,7 +416,6 @@ class AccountInvoice(models.Model):
          :return: response in dictionary format
         """
         self.error_handler()
-        _logger.debug('response = {}'.format(self.response_data))
         return self.response_data
 
     def error_handler(self):
@@ -400,6 +435,5 @@ class AccountInvoice(models.Model):
          :param date_time: str, string in datetime format
          :return: float, timestamp
         """
-        _logger.debug('convert to timestamp {}'.format(date_time))
         dt = datetime.strptime(date_time, DATETIME_FORMAT)
         return time.mktime(dt.timetuple())
