@@ -38,6 +38,13 @@ LOOK_UP_MAP = {
 }
 
 
+class account_payment(models.Model):
+    _inherit = "account.payment"
+
+    x_civicrm_id = fields.Integer(string='Civicrm Id', required=False,
+                                  help='Civicrm Id')
+
+
 class AccountInvoiceLine(models.Model):
     _inherit = "account.invoice.line"
 
@@ -101,7 +108,7 @@ class AccountInvoice(models.Model):
                 self._invoice_open(invoice)
                 invoice.re_reconcile_payment()
 
-            self.status_and_payment_handling()
+            self.status_and_payment_handling(invoice)
 
         except Exception as error:
             self.error_log.append(str(error))
@@ -134,6 +141,28 @@ class AccountInvoice(models.Model):
                 'price_subtotal': ParamType(float, False, None, None),
                 'account_code': ParamType(int, False, self.lookup_id, None),
                 'tax_name': ParamType(list, False, self.lookup_tax_id, None),
+            },
+            'payments': {
+                'x_civicrm_id': ParamType(int, False, None, None),
+                'communication': ParamType(str, False, None, None),
+                'journal_code': ParamType(str, False, self.lookup_id, 'INV'),
+                'is_payment': ParamType(int, False, None, None),
+                'status': ParamType(str, True, None, ''),
+                'amount': ParamType(float, False, None, None),
+                'payment_date': ParamType((int, str), False,
+                                          self.convert_timestamp_param, None),
+                'currency_code': ParamType(str, False, self.lookup_id, None),
+                'payment_type': ParamType(str, False, None, 'inbound'),
+                'payment_method_id': ParamType(int, False, None, 1),
+                'partner_type': ParamType(str, False, None, 'customer'),
+                'account_code': ParamType(int, True, self.lookup_id, None),
+
+            },
+            'refund': {
+                'filter_refund': ParamType(str, False, None, 'refund'),
+                'description': ParamType(str, False, None, ''),
+                'date': ParamType(int, False, self.convert_timestamp_param,
+                                  None),
             },
         }
 
@@ -240,7 +269,6 @@ class AccountInvoice(models.Model):
          :param field: field name from ODOO model to search
          :return: row ids
         """
-        _logger.debug('lookup {} {} {}'.format(model, field, value))
         if not isinstance(value, list):
             value = [value]
         ids = self.env[model].search(
@@ -407,9 +435,88 @@ class AccountInvoice(models.Model):
                 for content in outstanding['content']:
                     invoice.assign_outstanding_credit(content['id'])
 
-    # TODO in COS-25
-    def status_and_payment_handling(self):
-        pass
+    def status_and_payment_handling(self, invoice):
+        """ Checks payment exists in odoo, refunds invoice
+         :param invoice: invoice object
+        """
+        account_payment = self.env['account.payment']
+
+        x_civicrm_payment_ids = [payment_data.get('x_civicrm_id') for
+                                 payment_data in
+                                 self.vals.get('payments')]
+        payments = account_payment.with_context(active_test=False).search(
+            [('x_civicrm_id', 'in', x_civicrm_payment_ids)])
+
+        for payment_data in self.vals.get('payments'):
+            x_civicrm_payment_id = payment_data.get('x_civicrm_id')
+            payment = payments.filtered(
+                lambda payment: payment.x_civicrm_id == x_civicrm_payment_id)
+
+            if payment:
+                continue
+
+            if not payment_data.get('status'):
+                self._refund_invoice(invoice)
+                continue
+
+            if 'refund' in invoice.type:
+                invoice = self.save_new_invoice()
+                self._invoice_open(invoice)
+
+            payment = self._create_payment(payment_data, invoice)
+            self._validate_invoice_payment(payment, invoice)
+
+    def _refund_invoice(self, invoice):
+        """ Creates account.invoice.refund object and
+         refundes invoice
+         :param invoice: invoice object
+        """
+        invoice._payments_reverse_move()
+        refund = self.save_refund()
+        date = refund.date or False
+        refund_invoice = invoice.refund(refund.date_invoice, date,
+                                        refund.description,
+                                        invoice.journal_id.id)
+        refund_invoice.write({'x_civicrm_id': invoice.x_civicrm_id})
+        refund_invoice.action_invoice_open()
+        refund_invoice.re_reconcile_payment()
+
+    @api.multi
+    def _payments_reverse_move(self):
+        """ Gets payments move for invoices and make a reverse payment for
+         total amount received from the customer
+        """
+        for invoice in self:
+            payments_vals = invoice._get_payments_vals()
+            move_ids = [payment.get('move_id') for payment in payments_vals]
+            payment_moves = self.env['account.move'].browse(move_ids)
+            payment_moves.reverse_moves()
+
+    def _create_payment(self, payment_data, invoice):
+        """ Updates payment_data, creates payment
+         :param payment_data: dictionary payment from input params
+         :param invoice: invoice object
+        """
+        account_payment = self.env['account.payment']
+        payment_data.update(invoice_ids=[(6, 0, invoice.ids)])
+        payment_data.update(partner_id=invoice.partner_id.id)
+        payment_data.update(account_id=invoice.account_id.id)
+        return account_payment.create(payment_data)
+
+    def _validate_invoice_payment(self, payment, invoice):
+        """ Creates the journal items for the payment and updates the
+         payment's state to 'posted'.
+         :param payment: payment object
+        """
+        payment.invoice_ids = invoice.ids
+        payment.action_validate_invoice_payment()
+
+    def save_refund(self):
+        """ Creates refund objects """
+        account_invoice_refund = self.env['account.invoice.refund']
+        for refund_data in self.vals.get('refund'):
+            refund = account_invoice_refund.create(refund_data)
+        return refund
 
     def _get_civicrm_sync_response(self):
         """ Checks errors and return dictionary response
