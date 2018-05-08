@@ -15,6 +15,7 @@
         "product",
     ],
     'data': [
+        'views/civicrm_sync_settings.xml',
         'data/product_data.xml',
     ],
     "application": True,
