@@ -38,13 +38,6 @@ LOOK_UP_MAP = {
 }
 
 
-class account_payment(models.Model):
-    _inherit = "account.payment"
-
-    x_civicrm_id = fields.Integer(string='Civicrm Id', required=False,
-                                  help='Civicrm Id')
-
-
 class AccountInvoiceLine(models.Model):
     _inherit = "account.invoice.line"
 
@@ -547,3 +540,16 @@ class AccountInvoice(models.Model):
         """
         dt = datetime.strptime(date_time, DATETIME_FORMAT)
         return time.mktime(dt.timetuple())
+
+    @api.multi
+    def assign_outstanding_credit(self, credit_aml_id):
+        """ Override method to update sync status
+         :param credit_aml_id: int Account move line ids
+         :return: bool
+        """
+        res = super(AccountInvoice, self).assign_outstanding_credit(
+            credit_aml_id)
+        if not self.x_civicrm_id:
+            for payment in self.payment_ids:
+                payment.x_sync_status = 'awaiting'
+        return res
