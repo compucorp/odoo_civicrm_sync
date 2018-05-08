@@ -319,6 +319,7 @@ class AccountInvoice(models.Model):
         self.line_items_handling(invoice)
         invoice.compute_taxes()
         invoice.action_invoice_open()
+        self.response_data.update(invoice_number=invoice.number)
 
     def line_items_handling(self, invoice):
         """ Creates/updates or deletes invoice line
@@ -360,9 +361,9 @@ class AccountInvoice(models.Model):
 
     def update_line(self, line, invoice_line, invoice_id):
         """ Updates invoice lines
-        :param line: dictionary invoice line from input params
-        :param invoice_line: account.invoice.line to update
-        :param invoice_id: relation invoice id
+         :param line: dictionary invoice line from input params
+         :param invoice_line: account.invoice.line to update
+         :param invoice_id: relation invoice id
         """
         line.update(invoice_id=invoice_id)
         if not invoice_line.write(line):
@@ -479,6 +480,7 @@ class AccountInvoice(models.Model):
                                         invoice.journal_id.id)
         refund_invoice.write({'x_civicrm_id': invoice.x_civicrm_id})
         refund_invoice.action_invoice_open()
+        self.response_data.update(creditnote_number=refund_invoice.number)
         refund_invoice.re_reconcile_payment()
 
     @api.multi
@@ -523,6 +525,7 @@ class AccountInvoice(models.Model):
          :return: response in dictionary format
         """
         self.error_handler()
+        self.response_data.update(timestamp=int(time.time()))
         return self.response_data
 
     def error_handler(self):
