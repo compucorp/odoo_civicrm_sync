@@ -32,6 +32,7 @@ LOOK_UP_MAP = {
     'product_code': ('product.product', 'default_code', 'product_id'),
     'tax_name': ('account.tax', 'name', 'invoice_line_tax_ids'),
     'journal_code': ('account.journal', 'code', 'journal_id'),
+    'journal_name': ('account.journal', 'name', 'journal_id'),
     'invoice_civicrm_id': ('account.invoice', 'x_civicrm_id', 'x_civicrm_id'),
     'invoice_line_civicrm_id': ('account.invoice.line', 'x_civicrm_id',
                                 'x_civicrm_id'),
@@ -145,7 +146,7 @@ class AccountInvoice(models.Model):
             'payments': {
                 'x_civicrm_id': ParamType(int, False, None, None),
                 'communication': ParamType(str, False, None, None),
-                'journal_code': ParamType(str, False, self.lookup_id, 'INV'),
+                'journal_name': ParamType(str, True, self.lookup_id, None),
                 'is_payment': ParamType(int, False, None, None),
                 'status': ParamType(str, True, None, ''),
                 'amount': ParamType(float, False, None, None),
@@ -155,7 +156,6 @@ class AccountInvoice(models.Model):
                 'payment_type': ParamType(str, False, None, 'inbound'),
                 'payment_method_id': ParamType(int, False, None, 1),
                 'partner_type': ParamType(str, False, None, 'customer'),
-                'account_code': ParamType(int, True, self.lookup_id, None),
 
             },
             'refund': {
