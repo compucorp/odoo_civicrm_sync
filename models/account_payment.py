@@ -32,6 +32,6 @@ class account_payment(models.Model):
          :param vals: dictionary values
          :return: new account_payment object
         """
-        if not vals.get('x_civicrm_id'):
+        if vals.get('x_civicrm_id'):
             vals.update(x_sync_status='awaiting')
         return super(account_payment, self).create(vals)

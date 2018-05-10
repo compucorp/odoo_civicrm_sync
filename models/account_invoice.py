@@ -549,7 +549,7 @@ class AccountInvoice(models.Model):
         """
         res = super(AccountInvoice, self).assign_outstanding_credit(
             credit_aml_id)
-        if not self.x_civicrm_id:
+        if self.x_civicrm_id:
             for payment in self.payment_ids:
                 payment.x_sync_status = 'awaiting'
         return res
