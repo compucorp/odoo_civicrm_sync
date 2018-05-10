@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <menuitem id="menu_civicrm_sync_root" name="CiviCRM Sync"
+    <menuitem id="menu_civicrm_sync_settings_root" name="CiviCRM Sync"
               groups="base.group_no_one" sequence="30"/>
 
     <record id="res_config_settings_view_form" model="ir.ui.view">
@@ -24,11 +24,6 @@
                                     CiviCRM Sync Settings
                                 </div>
                                 <div class="content-group">
-                                    <!--<div class="row mt16">-->
-                                        <!--<label class="col-md-3 o_light_label"-->
-                                               <!--string="Reference Prefix"/>-->
-                                        <!--<field name="custom_invoice_reference_prefix"/>-->
-                                    <!--</div>-->
                                     <div class="row mt16">
                                         <label class="col-md-3 o_light_label"
                                                string="CiviCRM Instance URL"/>
@@ -80,7 +75,7 @@
     </record>
 
     <menuitem name="Settings" id="civicrm_sync_settings"
-              parent="menu_civicrm_sync_root" sequence="99"
+              parent="menu_civicrm_sync_settings_root" sequence="99"
               groups="base.group_no_one"
               action="action_civicrm_sync_configuration"/>
 </odoo>
