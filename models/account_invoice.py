@@ -79,6 +79,9 @@ class AccountInvoice(models.Model):
                 [('x_civicrm_id', '=', x_civicrm_invice_id)], order='id desc',
                 limit=1)
 
+            if invoice:
+                self.response_data.update(invoice_number=invoice.number)
+
             invoice_state = invoice.state
 
             # Create and post new invoice if not exist
@@ -149,7 +152,6 @@ class AccountInvoice(models.Model):
                 'payment_type': ParamType(str, False, None, 'inbound'),
                 'payment_method_id': ParamType(int, False, None, 1),
                 'partner_type': ParamType(str, False, None, 'customer'),
-
             },
             'refund': {
                 'filter_refund': ParamType(str, False, None, 'refund'),
@@ -208,8 +210,7 @@ class AccountInvoice(models.Model):
         key = kwargs.get('key')
         value = kwargs.get('value')
         vals = kwargs.get('vals')
-        civicrm_sync_settings = self.env['civicrm.sync.settings']
-        prefix = civicrm_sync_settings.custom_invoice_reference_prefix
+        prefix = self.env.user.company_id.custom_invoice_reference_prefix
         if not prefix:
             prefix = 'CIVI'
         vals[key] = '{} {}'.format(prefix, value)

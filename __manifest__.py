@@ -15,6 +15,8 @@
         "product",
     ],
     'data': [
+        'data/error_mail_template_data.xml',
+        'data/sync_payments_to_civi.xml',
         'views/civicrm_sync_settings.xml',
         'data/product_data.xml',
     ],

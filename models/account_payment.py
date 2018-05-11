@@ -23,7 +23,8 @@ class account_payment(models.Model):
              'is not empty, this field should be set to "Awaiting sync".')
 
     x_last_retry = fields.Date(string='Last Retry', help='Last Retry')
-    x_retry_count = fields.Integer(string='Retry Count', help='Retry Count')
+    x_retry_count = fields.Integer(string='Retry Count', default=0,
+                                   help='Retry Count')
     x_error_log = fields.Text(string='Error Log', help='Error Log')
 
     @api.model
@@ -40,4 +41,3 @@ class account_payment(models.Model):
         if invoice:
             payment.x_sync_status = 'awaiting'
         return payment
-
