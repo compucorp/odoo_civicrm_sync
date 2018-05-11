@@ -28,10 +28,16 @@ class account_payment(models.Model):
 
     @api.model
     def create(self, vals):
-        """  Override method to update sync status
+        """ Override method to update sync status
          :param vals: dictionary values
          :return: new account_payment object
         """
-        if vals.get('x_civicrm_id'):
-            vals.update(x_sync_status='awaiting')
-        return super(account_payment, self).create(vals)
+        payment = super(account_payment, self).create(vals)
+        invoices = payment.invoice_ids
+        if invoices and len(invoices) > 1:
+            return payment
+        invoice = invoices.filtered(lambda invoice: invoice.x_civicrm_id)
+        if invoice:
+            payment.x_sync_status = 'awaiting'
+        return payment
+
