@@ -107,7 +107,10 @@ class PaymentSync(models.Model):
             else:
                 payment.write({'x_retry_count': payment.x_retry_count + 1})
         elif status == 'synced':
-            payment.write({'x_sync_status': status})
+            payment.write({
+                'x_sync_status': status,
+                'x_last_success_sync': datetime.now()
+            })
         if prev_status == payment.x_sync_status:
             _logger.debug(
                 "Status of payment with civi_crm_id: {} was changed from {} to {}".

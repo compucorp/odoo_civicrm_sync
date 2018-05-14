@@ -25,6 +25,8 @@ class account_payment(models.Model):
     x_last_retry = fields.Date(string='Last Retry', help='Last Retry')
     x_retry_count = fields.Integer(string='Retry Count', default=0,
                                    help='Retry Count')
+    x_last_success_sync = fields.Datetime(string='Last Successful Sync Date',
+                                         default=0, help='Last Successful Sync Date')
     x_error_log = fields.Text(string='Error Log', help='Error Log')
 
     @api.model
