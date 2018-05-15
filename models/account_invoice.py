@@ -143,6 +143,7 @@ class AccountInvoice(models.Model):
                 'x_civicrm_id': ParamType(int, False, None, None),
                 'communication': ParamType(str, False, None, None),
                 'journal_name': ParamType(str, True, self.lookup_id, None),
+
                 'is_payment': ParamType(int, False, None, None),
                 'status': ParamType(str, True, None, ''),
                 'amount': ParamType(float, False, None, None),

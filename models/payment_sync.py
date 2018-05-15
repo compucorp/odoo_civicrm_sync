@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
 import logging
 import requests
+import time
 import xml.etree.ElementTree as ElementTree
 from datetime import datetime
 from odoo import api, models
 from odoo.exceptions import UserError
+from odoo.tools import DEFAULT_SERVER_DATE_FORMAT as DATE_FORMAT
 
 _logger = logging.getLogger(__name__)
 
@@ -13,12 +15,12 @@ class PaymentSync(models.Model):
     _name = "payment.sync"
 
     @api.model
-    def sync_payments(self):
+    def sync(self):
         """ Syncs Odoo payments to CiviCRM
          :return:
         """
         _logger.debug("Payment Sync Started")
-        payments = self._get_payments()
+        payments = self._get_awaiting_payments()
         if payments:
             self._process_payments(payments)
         else:
@@ -30,23 +32,25 @@ class PaymentSync(models.Model):
          :return: list of failed payments
         """
         for payment in payments:
-            if self._sync(payment):
-                self._send_report(payment)
+            if self._sync_single_payment(payment):
+                self._send_error_email(payment)
 
-    def _sync(self, payment):
+    def _sync_single_payment(self, payment):
         """ Syncs single record of Payment to CiviCRM
          :param payment: account_payment model
          :return: bool True on success, False on failure
         """
-        data = self._fill_sync_data(payment)
         # get url to sync
         url = self.env.user.company_id.civicrm_instance_url
         api_key = self.env.user.company_id.civicrm_api_key
         site_key = self.env.user.company_id.civicrm_site_key
         if not url or not api_key or not site_key:
             raise UserError("CiviCRM setting not filled")
+
+        data = self._fill_sync_data(payment)
         xml_doc = self._create_xml_with_data(data)
         response = self._do_request(url, api_key, site_key, xml_doc)
+        _logger.debug('CiviCRM sync responce = {}'.format(response.text))
         result = self._validate_sync_response(response, payment)
         self._change_payment_status(payment, 'synced' if not result else
         'failed')
@@ -129,6 +133,8 @@ class PaymentSync(models.Model):
             })
             return False
         response_xml = ElementTree.XML(response.text)
+        if not response_xml:
+            return False
         result_set = response_xml.find('Result')
         is_error = int(result_set.find('is_error').text)
         if is_error:
@@ -144,20 +150,28 @@ class PaymentSync(models.Model):
         payment.write(update)
         return bool(is_error)
 
-    @staticmethod
-    def _fill_sync_data(payment):
+    def _fill_sync_data(self, payment):
         """ Fills request body with payment's data
          :param payment: account_payment model
          :return: dict with data
         """
+        payment_to_invoice = max(payment.invoice_ids)
+
+        if not payment_to_invoice:
+            raise UserError('No invoice connected to payment was found')
+
+        dt = datetime.strptime(payment.payment_date, DATE_FORMAT)
+        payment_date = time.mktime(dt.timetuple())
+
         return [
-            {"to_financial_account_id": payment.journal_id.name},
+            {"to_financial_account_name": payment.journal_id.name},
             {"total_amount": payment.amount},
-            {"trxn_date": payment.payment_date},
-            {"currency": payment.currency_id.name}
+            {"trxn_date": int(payment_date)},
+            {"currency": payment.currency_id.name},
+            {"invoice_id": payment_to_invoice.x_civicrm_id}
         ]
 
-    def _get_payments(self):
+    def _get_awaiting_payments(self):
         """ Gets payments from db
          :return: account_payment models list
         """
@@ -165,10 +179,10 @@ class PaymentSync(models.Model):
             [
                 ('x_sync_status', '=', 'awaiting'),
                 ('payment_date', '<=', datetime.now().date())
-            ]
+            ],
         )
 
-    def _send_report(self, payment):
+    def _send_error_email(self, payment):
         """ Sends email with information regarding payment sync error
          :param payment: account.payment model
          :return: void
