@@ -4,7 +4,7 @@ import requests
 import time
 import xml.etree.ElementTree as ElementTree
 from datetime import datetime
-from odoo import api, models
+from odoo import api, models, fields
 from odoo.exceptions import UserError
 from odoo.tools import DEFAULT_SERVER_DATE_FORMAT as DATE_FORMAT
 
@@ -106,14 +106,13 @@ class PaymentSync(models.Model):
         """
         prev_status = payment.x_sync_status
         if status == 'failed':
+            payment.write({'x_retry_count': payment.x_retry_count + 1})
             if payment.x_retry_count >= self.env.user.company_id.retry_threshold:
                 payment.write({'x_sync_status': status})
-            else:
-                payment.write({'x_retry_count': payment.x_retry_count + 1})
         elif status == 'synced':
             payment.write({
                 'x_sync_status': status,
-                'x_last_success_sync': datetime.now()
+                'x_last_success_sync': fields.Datetime.now()
             })
         if prev_status == payment.x_sync_status:
             _logger.debug(
@@ -126,7 +125,7 @@ class PaymentSync(models.Model):
          :param response:
          :return:
         """
-        update = {'x_last_retry': datetime.now().date()}
+        update = {'x_last_retry': fields.Datetime.now()}
         if response.status_code >= 400:
             update.update({
                 'x_error_log': response.text,
@@ -178,7 +177,7 @@ class PaymentSync(models.Model):
         return self.env['account.payment'].search(
             [
                 ('x_sync_status', '=', 'awaiting'),
-                ('payment_date', '<=', datetime.now().date())
+                ('payment_date', '<=', fields.Date.today())
             ],
         )
 
