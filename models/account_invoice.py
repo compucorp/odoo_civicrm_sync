@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import json
+import inspect
 import logging
 import time
 from collections import namedtuple
@@ -551,7 +552,9 @@ class AccountInvoice(models.Model):
         """
         res = super(AccountInvoice, self).assign_outstanding_credit(
             credit_aml_id)
-        if self.x_civicrm_id:
+        curframe = inspect.currentframe()
+        calframe = inspect.getouterframes(curframe, 2)
+        if self.x_civicrm_id and calframe[1][3] != 're_reconcile_payment':
             for payment in self.payment_ids:
                 payment.x_sync_status = 'awaiting'
         return res

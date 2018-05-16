@@ -40,6 +40,6 @@ class account_payment(models.Model):
         if invoices and len(invoices) > 1:
             return payment
         invoice = invoices.filtered(lambda invoice: invoice.x_civicrm_id)
-        if invoice:
+        if invoice and not payment.x_civicrm_id:
             payment.x_sync_status = 'awaiting'
         return payment
