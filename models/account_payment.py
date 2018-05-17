@@ -22,7 +22,7 @@ class account_payment(models.Model):
         help='When a payment is registered to an invoice whose x_civicrm_id '
              'is not empty, this field should be set to "Awaiting sync".')
 
-    x_last_retry = fields.Date(string='Last Retry', help='Last Retry')
+    x_last_retry = fields.Datetime(string='Last Retry', help='Last Retry')
     x_retry_count = fields.Integer(string='Retry Count', default=0,
                                    help='Retry Count')
     x_last_success_sync = fields.Datetime(string='Last Successful Sync Date',
