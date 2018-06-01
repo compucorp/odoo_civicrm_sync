@@ -39,6 +39,10 @@ LOOK_UP_MAP = {
                                 'x_civicrm_id'),
 }
 
+DUPLICATE_MAP = {
+    'refund_date_invoice': 'date'
+}
+
 
 class AccountInvoiceLine(models.Model):
     _inherit = "account.invoice.line"
@@ -69,7 +73,6 @@ class AccountInvoice(models.Model):
             self.response_data = {'is_error': 0}
             if not self._validate_civicrm_sync_input_params(input_params):
                 return self._get_civicrm_sync_response()
-
             x_civicrm_invice_id = self.vals.get('x_civicrm_id')
 
             # Assign ODOO contribution_id if exists
@@ -124,45 +127,48 @@ class AccountInvoice(models.Model):
                                              'convert_method', 'default'])
 
         param_map = {
-            'contact_civicrm_id': ParamType(int, True, self.lookup_id, None),
-            'x_civicrm_id': ParamType(int, False, None, None),
-            'name': ParamType(str, True, self._add_prefix, None),
-            'account_code': ParamType(int, True, self.lookup_id, None),
-            'journal_code': ParamType(str, False, self.lookup_id, 'INV'),
-            'currency_code': ParamType(str, False, self.lookup_id, None),
+            'contact_civicrm_id': ParamType(int, True, self.lookup_id, None, 100),
+            'x_civicrm_id': ParamType(int, False, None, None, 100),
+            'name': ParamType(str, True, None, None, 100),
+            'account_code': ParamType(int, True, self.lookup_id, None, 100),
+            'journal_code': ParamType(str, False, self.lookup_id, 'INV', 100),
+            'currency_code': ParamType(str, False, self.lookup_id, None, 100),
+            'date_invoice': ParamType(int, False, self.convert_timestamp_param,
+                                      None, 100),
             'line_items': {
-                'x_civicrm_id': ParamType(int, False, None, None),
-                'product_code': ParamType(str, False, self.lookup_id, None),
-                'name': ParamType(str, True, None, None),
-                'quantity': ParamType(float, False, None, None),
-                'price_unit': ParamType(float, False, None, None),
-                'price_subtotal': ParamType(float, False, None, None),
-                'account_code': ParamType(int, False, self.lookup_id, None),
-                'tax_name': ParamType(list, False, self.lookup_tax_id, None),
+                'x_civicrm_id': ParamType(int, False, None, None, 100),
+                'product_code': ParamType(str, False, self.lookup_id, None, 100),
+                'name': ParamType(str, True, None, None, 100),
+                'quantity': ParamType(float, False, None, None, 100),
+                'price_unit': ParamType(float, False, None, None, 100),
+                'price_subtotal': ParamType(float, False, None, None, 100),
+                'account_code': ParamType(int, False, self.lookup_id, None, 100),
+                'tax_name': ParamType(list, False, self.lookup_tax_id, None, 100),
             },
             'payments': {
-                'x_civicrm_id': ParamType(int, False, None, None),
-                'communication': ParamType(str, False, None, None),
-                'journal_name': ParamType(str, True, self.lookup_id, None),
+                'x_civicrm_id': ParamType(int, False, None, None, 100),
+                'communication': ParamType(str, False, None, None, 100),
+                'journal_name': ParamType(str, True, self.lookup_id, None, 100),
 
-                'is_payment': ParamType(int, False, None, None),
-                'status': ParamType(str, True, None, ''),
-                'amount': ParamType(float, False, None, None),
+                'is_payment': ParamType(int, False, None, None, 100),
+                'status': ParamType(str, True, None, '', 100),
+                'amount': ParamType(float, False, None, None, 100),
                 'payment_date': ParamType((int, str), False,
-                                          self.convert_timestamp_param, None),
-                'currency_code': ParamType(str, False, self.lookup_id, None),
-                'payment_type': ParamType(str, False, None, 'inbound'),
-                'payment_method_id': ParamType(int, False, None, 1),
-                'partner_type': ParamType(str, False, None, 'customer'),
+                                          self.convert_timestamp_param, None, 100),
+                'currency_code': ParamType(str, False, self.lookup_id, None, 100),
+                'payment_type': ParamType(str, False, None, 'inbound', 100),
+                'payment_method_id': ParamType(int, False, None, 1, 100),
+                'partner_type': ParamType(str, False, None, 'customer', 100),
             },
             'refund': {
-                'filter_refund': ParamType(str, False, None, 'refund'),
-                'description': ParamType(str, False, None, ''),
+                'filter_refund': ParamType(str, False, None, 'refund', 100),
+                'description': ParamType(str, False, None, '', 100),
                 'date': ParamType(int, False, self.convert_timestamp_param,
-                                  None),
+                                  None, 100),
+                'date_invoice': ParamType(int, False, self._duplicate_field, 0, 101),
             },
         }
-
+        self._model_name = ''
         self._validate_model(param_map, self.vals)
 
         return False if self.error_log else True
@@ -172,19 +178,22 @@ class AccountInvoice(models.Model):
          :param param_map: dictionary with rules to validation
          :param vals: dictionary of input parameters
         """
-        for key, param_type in param_map.items():
+        for key in sorted(param_map.keys(), key=lambda key: 100 if isinstance(param_map[key],
+                                                                                           dict) else param_map[key].weight):
             value = vals.get(key)
             new_param_map = param_map.get(key)
             if isinstance(value, list) and isinstance(new_param_map, dict):
+                self._model_name = key
                 for val in value:
                     self._validate_model(param_map[key], val)
                 continue
             if isinstance(value, dict):
+                self._model_name = key
                 vals = self.vals.get(key)
                 self._validate_model(param_map[key], vals)
                 continue
 
-            self._validate_value(param_type, value, vals, key)
+            self._validate_value(new_param_map, value, vals, key)
 
     def _validate_value(self, param_type, value, vals, key):
         """ Validates value and runs convert_method from param_map
@@ -195,7 +204,6 @@ class AccountInvoice(models.Model):
         """
         value = value if value else vals.get(key, param_type.default)
         vals[key] = value
-
         if param_type.required and value is None:
             self.error_log.append(ERROR_MESSAGE[
                 'missed_required_parameter'].format(
@@ -208,14 +216,14 @@ class AccountInvoice(models.Model):
         if value is not None and param_type.convert_method:
             param_type.convert_method(key=key, value=value, vals=vals)
 
-    def _add_prefix(self, **kwargs):
+    def _duplicate_field(self, **kwargs):
+        """ Copy value from another field according to the DUPLICATE_MAP
+         :param kwargs: dictionary with value for duplicate
+        """
         key = kwargs.get('key')
-        value = kwargs.get('value')
         vals = kwargs.get('vals')
-        prefix = self.env.user.company_id.custom_invoice_reference_prefix
-        if not prefix:
-            prefix = 'CIVI'
-        vals[key] = '{} {}'.format(prefix, value)
+        duplicate_fild_name = DUPLICATE_MAP.get('{}_{}'.format(self._model_name, key))
+        vals[key] = vals.get(duplicate_fild_name)
 
     def lookup_id(self, **kwargs):
         """ Lookups the ODOO ids
