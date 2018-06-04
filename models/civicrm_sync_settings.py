@@ -5,11 +5,6 @@ from odoo import fields, models
 class ResCompany(models.Model):
     _inherit = 'res.company'
 
-    custom_invoice_reference_prefix = fields.Char(
-        string='Reference Prefix',
-        default='CIVI',
-        help='Prefix which is added to civicrm contribution.')
-
     civicrm_instance_url = fields.Char(
         string='CiviCRM URL',
         help='Specify the address of the CiviCRM Instance that Odoo should '
@@ -44,12 +39,6 @@ class ResCompany(models.Model):
 
 class CivicrmSyncSettings(models.TransientModel):
     _inherit = 'res.config.settings'
-
-    custom_invoice_reference_prefix = fields.Char(
-        related='company_id.custom_invoice_reference_prefix',
-        string='Reference Prefix',
-        default='CIVI',
-        help='Prefix which is added to civicrm contribution.')
 
     civicrm_instance_url = fields.Char(
         related='company_id.civicrm_instance_url',
