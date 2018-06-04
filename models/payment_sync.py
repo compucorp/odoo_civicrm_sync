@@ -32,6 +32,8 @@ class PaymentSync(models.Model):
          :return: list of failed payments
         """
         for payment in payments:
+            if not payment.invoice_ids:
+                continue
             if self._sync_single_payment(payment):
                 self._send_error_email(payment)
 
@@ -112,7 +114,10 @@ class PaymentSync(models.Model):
         elif status == 'synced':
             payment.write({
                 'x_sync_status': status,
-                'x_last_success_sync': fields.Datetime.now()
+                'x_last_success_sync': fields.Datetime.now(),
+                'x_retry_count': 0,
+                'x_error_log': None,
+                'x_last_retry': None,
             })
         if prev_status == payment.x_sync_status:
             _logger.debug(
