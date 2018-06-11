@@ -168,14 +168,26 @@ class PaymentSync(models.TransientModel):
 
         dt = datetime.strptime(payment.payment_date, DATE_FORMAT)
         payment_date = time.mktime(dt.timetuple())
-
+        invoice_state = payment_to_invoice.state
         return [
             {"to_financial_account_name": payment.journal_id.name},
             {"total_amount": payment.amount},
             {"trxn_date": int(payment_date)},
             {"currency": payment.currency_id.name},
-            {"invoice_id": payment_to_invoice.x_civicrm_id}
+            {"invoice_id": payment_to_invoice.x_civicrm_id},
+            {"credit_account_code": payment_to_invoice.account_id.code},
+            {"contribution_status": self._convert_invoice_state(invoice_state)},
         ]
+
+    @staticmethod
+    def _convert_invoice_state(state):
+        """ Change invoice state name for matching with CiviCRM
+         :param state: invoice.state
+         :return: CiviCRM contribution status
+        """
+        convert_map = {'paid': 'Completed',
+                       'open': 'Partially Paid'}
+        return convert_map.get(state, state)
 
     def _get_awaiting_payments(self):
         """ Gets payments from db
