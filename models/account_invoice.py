@@ -124,7 +124,7 @@ class AccountInvoice(models.Model):
         """
         self.vals = input_params
         ParamType = namedtuple('ParamType', ['type', 'required',
-                                             'convert_method', 'default'])
+                                             'convert_method', 'default','weight'])
 
         param_map = {
             'contact_civicrm_id': ParamType(int, True, self.lookup_id, None, 100),
@@ -179,7 +179,7 @@ class AccountInvoice(models.Model):
          :param vals: dictionary of input parameters
         """
         for key in sorted(param_map.keys(), key=lambda key: 100 if isinstance(param_map[key],
-                                                                                           dict) else param_map[key].weight):
+                                                                              dict) else param_map[key].weight):
             value = vals.get(key)
             new_param_map = param_map.get(key)
             if isinstance(value, list) and isinstance(new_param_map, dict):
@@ -460,11 +460,15 @@ class AccountInvoice(models.Model):
             if payment:
                 continue
 
-            if not payment_data.get('status'):
-                self._refund_invoice(invoice)
-                continue
+            elif not payment_data.get('status'):
+                invoice = self._refund_invoice(invoice)
+                payment_data.update(payment_type='outbound')
+                amount = payment_data.get('amount')
+                if amount < 0:
+                    amount = -1 * amount
+                payment_data.update(amount=amount)
 
-            if 'refund' in invoice.type:
+            elif 'refund' in invoice.type:
                 invoice = self.save_new_invoice()
                 self._invoice_open(invoice)
 
@@ -476,16 +480,17 @@ class AccountInvoice(models.Model):
          refundes invoice
          :param invoice: invoice object
         """
-        invoice._payments_reverse_move()
         refund = self.save_refund()
-        date = refund.date or False
-        refund_invoice = invoice.refund(refund.date_invoice, date,
-                                        refund.description,
-                                        invoice.journal_id.id)
+        view = refund.with_context(active_ids=invoice.ids).compute_refund(mode='refund')
+        domains = view.get('domain')
+        for domain in domains:
+            if domain[0] == 'id':
+                refund_invoice = invoice.browse(domain[2])
+
         refund_invoice.write({'x_civicrm_id': invoice.x_civicrm_id})
         refund_invoice.action_invoice_open()
         self.response_data.update(creditnote_number=refund_invoice.number)
-        refund_invoice.re_reconcile_payment()
+        return refund_invoice
 
     @api.multi
     def _payments_reverse_move(self):
@@ -521,6 +526,7 @@ class AccountInvoice(models.Model):
         """ Creates refund objects """
         account_invoice_refund = self.env['account.invoice.refund']
         for refund_data in self.vals.get('refund'):
+            refund_data.update(filter_refund='refund')
             refund = account_invoice_refund.create(refund_data)
         return refund
 
