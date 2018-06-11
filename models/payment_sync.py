@@ -11,8 +11,10 @@ from odoo.tools import DEFAULT_SERVER_DATE_FORMAT as DATE_FORMAT
 _logger = logging.getLogger(__name__)
 
 
-class PaymentSync(models.Model):
+class PaymentSync(models.TransientModel):
     _name = "payment.sync"
+
+    payments = fields.Many2many('account.payment', string='Payments')
 
     @api.model
     def sync(self):
@@ -34,8 +36,8 @@ class PaymentSync(models.Model):
         for payment in payments:
             if not payment.invoice_ids:
                 continue
-            if self._sync_single_payment(payment):
-                self._send_error_email(payment)
+            self._sync_single_payment(payment)
+        self._send_error_email(payments)
 
     def _sync_single_payment(self, payment):
         """ Syncs single record of Payment to CiviCRM
@@ -186,10 +188,13 @@ class PaymentSync(models.Model):
             ],
         )
 
-    def _send_error_email(self, payment):
+    def _send_error_email(self, payments):
         """ Sends email with information regarding payment sync error
          :param payment: account.payment model
          :return: void
         """
         template = self.env.ref('odoo_civicrm_sync.odoo_sivicrm_sync_error')
-        self.env['mail.template'].browse(template.id).send_mail(payment.id)
+        payments = payments.filtered(lambda payment: payment.x_sync_status == 'failed')
+        if payments:
+            sync = self.create({'payments':[(6, 0, payments.ids)]})
+            self.env['mail.template'].browse(template.id).send_mail(sync.id)
