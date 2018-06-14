@@ -104,10 +104,12 @@ class AccountInvoice(models.Model):
                 # Posted invoice
                 # Re-reconcile the payments with the new invoice
                 invoice.move_id.line_ids.remove_move_reconcile()
-                invoice.action_invoice_cancel()
+                old_invoice = invoice
+                self._refund_invoice(old_invoice)
                 invoice = self.save_new_invoice()
                 self._invoice_open(invoice)
                 invoice.re_reconcile_payment()
+                old_invoice.re_reconcile_payment()
 
             self.status_and_payment_handling(invoice)
 
@@ -124,7 +126,7 @@ class AccountInvoice(models.Model):
         """
         self.vals = input_params
         ParamType = namedtuple('ParamType', ['type', 'required',
-                                             'convert_method', 'default','weight'])
+                                             'convert_method', 'default', 'weight'])
 
         param_map = {
             'contact_civicrm_id': ParamType(int, True, self.lookup_id, None, 100),
@@ -461,7 +463,11 @@ class AccountInvoice(models.Model):
                 continue
 
             elif not payment_data.get('status'):
-                invoice = self._refund_invoice(invoice)
+                refund_invoice = self._refund_invoice(invoice)
+                if invoice.state != 'paid':
+                    invoice.re_reconcile_payment()
+                    continue
+                invoice = refund_invoice
                 payment_data.update(payment_type='outbound')
                 amount = payment_data.get('amount')
                 if amount < 0:
