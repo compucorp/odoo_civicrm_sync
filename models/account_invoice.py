@@ -103,13 +103,13 @@ class AccountInvoice(models.Model):
                 # Create a new one and do Line Items Handling.
                 # Posted invoice
                 # Re-reconcile the payments with the new invoice
+                credit_aml_ids = invoice.payment_move_line_ids.ids
                 invoice.move_id.line_ids.remove_move_reconcile()
-                old_invoice = invoice
-                self._refund_invoice(old_invoice)
+                refund_invoice = self._refund_invoice(invoice)
+                refund_invoice.re_reconcile_payment(invoice_number=invoice.number)
                 invoice = self.save_new_invoice()
                 self._invoice_open(invoice)
-                invoice.re_reconcile_payment()
-                old_invoice.re_reconcile_payment()
+                invoice.re_reconcile_payment(credit_aml_ids=credit_aml_ids)
 
             self.status_and_payment_handling(invoice)
 
@@ -432,15 +432,21 @@ class AccountInvoice(models.Model):
         return value
 
     @api.multi
-    def re_reconcile_payment(self):
+    def re_reconcile_payment(self, credit_aml_ids=None, invoice_number=None):
         """ Re-reconciles with the invoice """
-        for invoice in self:
-            invoice._get_outstanding_info_JSON()
-            outstanding_JSON = invoice.outstanding_credits_debits_widget
-            if invoice.has_outstanding:
+        self.ensure_one()
+        if not credit_aml_ids:
+            credit_aml_ids = []
+            self._get_outstanding_info_JSON()
+            outstanding_JSON = self.outstanding_credits_debits_widget
+            if self.has_outstanding:
                 outstanding = json.loads(outstanding_JSON)
                 for content in outstanding['content']:
-                    invoice.assign_outstanding_credit(content['id'])
+                    if content.get('journal_name') == invoice_number:
+                        credit_aml_ids.append(content['id'])
+
+        for credit_aml_id in credit_aml_ids:
+            self.assign_outstanding_credit(credit_aml_id)
 
     def status_and_payment_handling(self, invoice):
         """ Checks payment exists in odoo, refunds invoice
@@ -465,7 +471,7 @@ class AccountInvoice(models.Model):
             elif not payment_data.get('status'):
                 refund_invoice = self._refund_invoice(invoice)
                 if invoice.state != 'paid':
-                    invoice.re_reconcile_payment()
+                    refund_invoice.re_reconcile_payment(invoice_number=invoice.number)
                     continue
                 invoice = refund_invoice
                 payment_data.update(payment_type='outbound')
@@ -530,8 +536,13 @@ class AccountInvoice(models.Model):
 
     def save_refund(self):
         """ Creates refund objects """
+        default_data = [{'description': 'Tecnical refund',
+                         'date_invoice': fields.Datetime.now(),
+                         'date': fields.Date.today()}]
+        refunds_data = self.vals.get('refund') if self.vals.get('refund') else default_data
+
         account_invoice_refund = self.env['account.invoice.refund']
-        for refund_data in self.vals.get('refund'):
+        for refund_data in refunds_data:
             refund_data.update(filter_refund='refund')
             refund = account_invoice_refund.create(refund_data)
         return refund
