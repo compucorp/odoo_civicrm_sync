@@ -4,6 +4,7 @@ import json
 import inspect
 import logging
 import time
+import sys
 from collections import namedtuple
 from datetime import datetime
 
@@ -13,6 +14,7 @@ from odoo.tools import DEFAULT_SERVER_DATETIME_FORMAT as DATETIME_FORMAT
 _logger = logging.getLogger(__name__)
 
 UNKNOWN_ERROR = _("Unknown error when synchronize invoice data")
+EXCEPTION_ERROR_MESSAGE = _("Exception in file: '{}' line: {} type error: {} messege: {}")
 
 ERROR_MESSAGE = {
     'duplicated_partner_with_contact_id': _(
@@ -114,7 +116,13 @@ class AccountInvoice(models.Model):
             self.status_and_payment_handling(invoice)
 
         except Exception as error:
-            self.error_log.append(str(error))
+            ex_type, ex, exc_tb = sys.exc_info()
+            filename = exc_tb.tb_frame.f_code.co_filename
+            line = exc_tb.tb_lineno
+            self.error_log.append(EXCEPTION_ERROR_MESSAGE.format(filename,
+                                                                 line,
+                                                                 ex_type,
+                                                                 error))
             self.error_handler()
 
         return self._get_civicrm_sync_response()
