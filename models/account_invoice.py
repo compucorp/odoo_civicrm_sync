@@ -84,6 +84,7 @@ class AccountInvoice(models.Model):
             invoice = self.with_context(active_test=False).search(
                 [('x_civicrm_id', '=', x_civicrm_invice_id)], order='id desc',
                 limit=1)
+            _logger.debug('last invoice({}) with civicrm_id({})'.format(invoice, x_civicrm_invice_id))
 
             if invoice:
                 self.response_data.update(invoice_number=invoice.number)
@@ -116,14 +117,8 @@ class AccountInvoice(models.Model):
             self.status_and_payment_handling(invoice)
 
         except Exception as error:
-            ex_type, ex, exc_tb = sys.exc_info()
-            filename = exc_tb.tb_frame.f_code.co_filename
-            line = exc_tb.tb_lineno
-            self.error_log.append(EXCEPTION_ERROR_MESSAGE.format(filename,
-                                                                 line,
-                                                                 ex_type,
-                                                                 error))
-            self.error_handler()
+            self.exception_handler(error)
+
 
         return self._get_civicrm_sync_response()
 
@@ -132,6 +127,7 @@ class AccountInvoice(models.Model):
          :param input_params: dictionary of input parameters
          :return: validation status True or False
         """
+        _logger.debug('validate input params')
         self.vals = input_params
         ParamType = namedtuple('ParamType', ['type', 'required',
                                              'convert_method', 'default', 'weight'])
@@ -303,18 +299,18 @@ class AccountInvoice(models.Model):
         key = kwargs.get('key')
         vals = kwargs.get('vals')
         try:
-            vals[key] = datetime.fromtimestamp(timestamp).strftime(
-                DATETIME_FORMAT)
+            date_time = datetime.fromtimestamp(timestamp)
+            _logger.debug('date_time value is {} type is {}'.format(date_time, type(date_time)))
+            vals[key] = date_time.strftime(DATETIME_FORMAT)
         except Exception as error:
-            _logger.error(error)
-            self.error_log.append(str(error))
-            self.error_handler()
+            self.exception_handler(error)
 
     def save_new_invoice(self):
         """ Creates new invoice
          :return: invoice object
         """
         invoice = self.create(self.vals)
+        _logger.debug('create new invoice({})'.format(invoice))
         return invoice
 
     def create_line(self, line, invoice_id):
@@ -330,6 +326,7 @@ class AccountInvoice(models.Model):
         """ Handles line items, computes taxes and open invoice
          :param invoice: invoice object
         """
+        _logger.debug('start open new invoice({})'.format(invoice))
         self.line_items_handling(invoice)
         invoice.compute_taxes()
         invoice.action_invoice_open()
@@ -339,6 +336,7 @@ class AccountInvoice(models.Model):
         """ Creates/updates or deletes invoice line
          :param invoice: invoice object
         """
+        _logger.debug('start line items handling')
         lines = self.vals.get('line_items')
         line_civicrm_id = set(line.get('x_civicrm_id') for line in lines)
         for line in lines:
@@ -389,6 +387,7 @@ class AccountInvoice(models.Model):
          :param invoice:  invoice object
          :return: True if line is the same, otherwise False
         """
+        _logger.debug('start match lines')
         new_lines = self.vals.get('line_items')
         if len(invoice.invoice_line_ids) != len(new_lines):
             return False
@@ -452,7 +451,7 @@ class AccountInvoice(models.Model):
                 for content in outstanding['content']:
                     if content.get('journal_name') == invoice_number:
                         credit_aml_ids.append(content['id'])
-
+        _logger.debug('assign credits({})'.format(credit_aml_ids))
         for credit_aml_id in credit_aml_ids:
             self.assign_outstanding_credit(credit_aml_id)
 
@@ -469,6 +468,7 @@ class AccountInvoice(models.Model):
             [('x_civicrm_id', 'in', x_civicrm_payment_ids)])
 
         for payment_data in self.vals.get('payments'):
+            _logger.debug('handling payment({})'.format(payment_data))
             x_civicrm_payment_id = payment_data.get('x_civicrm_id')
             payment = payments.filtered(
                 lambda payment: payment.x_civicrm_id == x_civicrm_payment_id)
@@ -501,6 +501,7 @@ class AccountInvoice(models.Model):
          :param invoice: invoice object
         """
         refund = self.save_refund()
+        _logger.debug('create refund_invoice({})'.format(refund))
         view = refund.with_context(active_ids=invoice.ids).compute_refund(mode='refund')
         domains = view.get('domain')
         for domain in domains:
@@ -509,6 +510,7 @@ class AccountInvoice(models.Model):
 
         refund_invoice.write({'x_civicrm_id': invoice.x_civicrm_id})
         refund_invoice.action_invoice_open()
+        _logger.debug('open refund_invoice({})'.format(refund))
         self.response_data.update(creditnote_number=refund_invoice.number)
         return refund_invoice
 
@@ -532,13 +534,16 @@ class AccountInvoice(models.Model):
         payment_data.update(invoice_ids=[(6, 0, invoice.ids)])
         payment_data.update(partner_id=invoice.partner_id.id)
         payment_data.update(account_id=invoice.account_id.id)
-        return account_payment.create(payment_data)
+        payment = account_payment.create(payment_data)
+        _logger.debug('create payment({})'.format(payment))
+        return payment
 
     def _validate_invoice_payment(self, payment, invoice):
         """ Creates the journal items for the payment and updates the
          payment's state to 'posted'.
          :param payment: payment object
         """
+        _logger.debug('start validate payment')
         payment.invoice_ids = invoice.ids
         payment.action_validate_invoice_payment()
 
@@ -573,6 +578,17 @@ class AccountInvoice(models.Model):
                                       error_log=self.error_log)
             return True
         return False
+
+    def exception_handler(self, error):
+        """ Adds error log message if raise exception """
+        ex_type, ex, exc_tb = sys.exc_info()
+        filename = exc_tb.tb_frame.f_code.co_filename
+        line = exc_tb.tb_lineno
+        self.error_log.append(EXCEPTION_ERROR_MESSAGE.format(filename,
+                                                             line,
+                                                             ex_type,
+                                                             error))
+        self.error_handler()
 
     @staticmethod
     def timestamp_from_string(date_time):
