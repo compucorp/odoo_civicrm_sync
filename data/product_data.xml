@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <record model="product.product" id="data_product_CVEVT">
+            <field name="name">CiviCRM Event</field>
+            <field name="default_code">CVEVT</field>
+        </record>
+        <record model="product.product" id="data_product_CVMEM">
+            <field name="name">CiviCRM Membership</field>
+            <field name="default_code">CVMEM</field>
+        </record>
+        <record model="product.product" id="data_product_CVBK">
+            <field name="name">CiviCRM Booking</field>
+            <field name="default_code">CVBK</field>
+        </record>
+        <record model="product.product" id="data_product_CVCTB">
+            <field name="name">CiviCRM Contribution</field>
+            <field name="default_code">CVCTB</field>
+        </record>
+    </data>
+</odoo>

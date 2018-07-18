@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+
+        <!--Email template -->
+        <record id="odoo_sivicrm_sync_error" model="mail.template">
+            <field name="name">Odoo - CiviCRM Sync Error Email</field>
+            <field name="email_from">test@test_from.test</field>
+            <field name="subject">Odoo - SiviCRM sync error</field>
+            <field name="email_to">${user.company_id.error_notice_address}</field>
+            <field name="model_id" ref="odoo_civicrm_sync.model_payment_sync"/>
+            <field name="auto_delete" eval="True"/>
+            <field name="body_html"><![CDATA[
+<h2>Odoo CiviCRM Sync Error Report</h2>
+<br>
+<table>
+<tbody>
+<tr>
+<th><p>Entity type</p></th>
+<th><p>   Entity id</p></th>
+<th><p>   Error log</p></th>
+</tr>
+% for p in object.payments:
+<tr>
+<td><p>Payment</p></td>
+<td><p>   ${p.id}</p></td>
+<td><p>   ${p.x_error_log}</p></td>
+</tr>
+% endfor
+</tbody>
+</table>
+]]></field>
+        </record>
+    </data>
+</odoo>

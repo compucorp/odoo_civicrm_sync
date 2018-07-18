@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <menuitem id="menu_civicrm_sync_settings_root" name="CiviCRM Sync"
+              groups="base.group_no_one" sequence="30"/>
+
+    <record id="res_config_settings_view_form" model="ir.ui.view">
+        <field name="name">
+            res.config.settings.view.form.inherit.odoo_civicrm_sync
+        </field>
+        <field name="model">res.config.settings</field>
+        <field name="priority" eval="45"/>
+        <field name="inherit_id" ref="base.res_config_settings_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//div[hasclass('settings')]" position="inside">
+                <div class="app_settings_block" data-string="CiviCRM Sync"
+                     string="CiviCRM Sync" data-key="civicrm_sync">
+                    <div class="row mt16 o_settings_container"
+                         id="civicrm_sync_settings">
+                        <div class="col-xs-12 col-md-6 o_setting_box"
+                             id="domain_setting">
+                            <div class="o_setting_right_pane">
+                                <label string="CiviCRM Sync"/>
+                                <div class="text-muted">
+                                    CiviCRM Sync Settings
+                                </div>
+                                <div class="content-group">
+                                    <div class="row mt16">
+                                        <label class="col-md-3 o_light_label"
+                                               string="CiviCRM Instance URL"/>
+                                        <field name="civicrm_instance_url"/>
+                                    </div>
+                                    <div class="row mt16">
+                                        <label class="col-md-3 o_light_label"
+                                               string="CiviCRM Site Key"/>
+                                        <field name="civicrm_site_key"/>
+                                    </div>
+                                    <div class="row mt16">
+                                        <label class="col-md-3 o_light_label"
+                                               string="CiviCRM API Key"/>
+                                        <field name="civicrm_api_key"/>
+                                    </div>
+                                    <div class="row mt16">
+                                        <label class="col-md-3 o_light_label"
+                                               string="Batch Size"/>
+                                        <field name="batch_size"/>
+                                    </div>
+                                    <div class="row mt16">
+                                        <label class="col-md-3 o_light_label"
+                                               string="Retry Threshold"/>
+                                        <field name="retry_threshold"/>
+                                    </div>
+                                    <div class="row mt16">
+                                        <label class="col-md-3 o_light_label"
+                                               string="Error Notice Address"/>
+                                        <field name="error_notice_address"/>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="action_civicrm_sync_configuration"
+            model="ir.actions.act_window">
+        <field name="name">Settings</field>
+        <field name="type">ir.actions.act_window</field>
+        <field name="res_model">res.config.settings</field>
+        <field name="view_id" ref="res_config_settings_view_form"/>
+        <field name="view_mode">form</field>
+        <field name="target">inline</field>
+        <field name="context">{'module' : 'odoo_civicrm_sync'}</field>
+    </record>
+
+    <menuitem name="Settings" id="civicrm_sync_settings"
+              parent="menu_civicrm_sync_settings_root" sequence="99"
+              groups="base.group_no_one"
+              action="action_civicrm_sync_configuration"/>
+</odoo>
