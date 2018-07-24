@@ -472,21 +472,25 @@ class AccountInvoice(models.Model):
             x_civicrm_payment_id = payment_data.get('x_civicrm_id')
             payment = payments.filtered(
                 lambda payment: payment.x_civicrm_id == x_civicrm_payment_id)
-
+            amount = payment_data.get('amount')
             if payment:
                 continue
 
-            elif not payment_data.get('status'):
+            elif not payment_data.get('status') or amount < 0:
+                payment_data.update(payment_type='outbound')
+                amount = -1 * amount if amount < 0 else amount
+                payment_data.update(amount=amount)
+                if invoice.state == 'paid' and (amount != invoice.amount_total or not self.vals.get('refund')):
+                    payment_data.update(partner_id=invoice.partner_id.id)
+                    payment = self._create_payment(payment_data)
+                    payment.post()
+                    self._payment_reconciliations(payment)
+                    continue
                 refund_invoice = self._refund_invoice(invoice)
                 if invoice.state != 'paid':
                     refund_invoice.re_reconcile_payment(invoice_number=invoice.number)
                     continue
                 invoice = refund_invoice
-                payment_data.update(payment_type='outbound')
-                amount = payment_data.get('amount')
-                if amount < 0:
-                    amount = -1 * amount
-                payment_data.update(amount=amount)
 
             elif 'refund' in invoice.type:
                 invoice = self.save_new_invoice()
@@ -514,26 +518,30 @@ class AccountInvoice(models.Model):
         self.response_data.update(creditnote_number=refund_invoice.number)
         return refund_invoice
 
-    @api.multi
-    def _payments_reverse_move(self):
-        """ Gets payments move for invoices and make a reverse payment for
-         total amount received from the customer
+    def _payment_reconciliations(self, payment):
+        """ Gets data for reconciliation and reconciled
+         :param payment: payment object
         """
-        for invoice in self:
-            payments_vals = invoice._get_payments_vals()
-            move_ids = [payment.get('move_id') for payment in payments_vals]
-            payment_moves = self.env['account.move'].browse(move_ids)
-            payment_moves.reverse_moves()
+        move = self.env['account.move.line']
+        reconciliation_data = move.get_data_for_manual_reconciliation('partner', [payment.partner_id.id])
+        for reconciliation in reconciliation_data:
+            move_ids = [data.get('id') for data in reconciliation.get('reconciliation_proposition')]
+            _logger.debug("reconciliations move_ids = {}".format(move_ids))
+            if move_ids:
+                move.process_reconciliations(
+                    [{'type': None, 'id': None, 'mv_line_ids': move_ids, 'new_mv_line_dicts': []}])
 
-    def _create_payment(self, payment_data, invoice):
+
+    def _create_payment(self, payment_data, invoice=None):
         """ Updates payment_data, creates payment
          :param payment_data: dictionary payment from input params
          :param invoice: invoice object
         """
+        if invoice is not None:
+            payment_data.update(invoice_ids=[(6, 0, invoice.ids)])
+            payment_data.update(partner_id=invoice.partner_id.id)
+            payment_data.update(account_id=invoice.account_id.id)
         account_payment = self.env['account.payment']
-        payment_data.update(invoice_ids=[(6, 0, invoice.ids)])
-        payment_data.update(partner_id=invoice.partner_id.id)
-        payment_data.update(account_id=invoice.account_id.id)
         payment = account_payment.create(payment_data)
         _logger.debug('create payment({})'.format(payment))
         return payment
