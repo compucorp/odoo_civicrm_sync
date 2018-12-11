@@ -169,15 +169,23 @@ class PaymentSync(models.TransientModel):
         dt = datetime.strptime(payment.payment_date, DATE_FORMAT)
         payment_date = time.mktime(dt.timetuple())
         invoice_state = payment_to_invoice.state
-        debit_line = payment.move_line_ids.filtered(lambda l: l.debit)
+
+        debit_lines = payment.move_line_ids.filtered(lambda l: l.debit)
+        transactions = []
+        for debit_line in debit_lines:
+            transaction = [
+                {"credit_account_code": debit_line.account_id.code},
+                {"total_amount": debit_line.debit},
+            ]
+            transactions.append(transaction)
+
         return [
             {"to_financial_account_name": payment.journal_id.name},
-            {"total_amount": payment.amount},
             {"trxn_date": int(payment_date)},
             {"currency": payment.currency_id.name},
             {"invoice_id": payment_to_invoice.x_civicrm_id},
-            {"credit_account_code": debit_line.account_id.code},
             {"contribution_status": self._convert_invoice_state(invoice_state)},
+            {"transactions": transactions},
         ]
 
     @staticmethod
