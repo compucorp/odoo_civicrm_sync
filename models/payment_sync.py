@@ -33,7 +33,11 @@ class PaymentSync(models.TransientModel):
          :param payments: list of payments
          :return: list of failed payments
         """
+        _logger.error('DDDDDDDD')
         for payment in payments:
+            _logger.error('YYYYYY')
+            _logger.error(payment)
+            _logger.error('KKKK')
             if not payment.invoice_ids:
                 continue
             self._sync_single_payment(payment)
@@ -69,6 +73,11 @@ class PaymentSync(models.TransientModel):
         """
         headers = {'Content-Type': 'application/xml'}
         api = "entity=OdooSync&action=transaction"
+
+        _logger.error('AAAAA')
+        _logger.error("{}?{}&key={}&api_key={}".
+                      format(url, api, site_key, api_key))
+
         return requests.post(
             "{}?{}&key={}&api_key={}".
                 format(url, api, site_key, api_key),
@@ -97,7 +106,21 @@ class PaymentSync(models.TransientModel):
                 name = ElementTree.SubElement(financial_trxn, 'name')
                 name.text = str(key)
                 data_value = ElementTree.SubElement(financial_trxn, 'value')
-                if val:
+                if val and type(val) is list:
+                    listElement = ElementTree.SubElement(data_value,
+                                                           'list')
+                    for record in val:
+                        recordElement = ElementTree.SubElement(listElement,
+                                                                'record')
+                        for nameParam, valueParam in record.items():
+                            paramElement = ElementTree.SubElement(recordElement,
+                                                                   'param')
+                            nameElement = ElementTree.SubElement(paramElement, 'name')
+                            nameElement.text = str(nameParam)
+                            if valueParam:
+                                valueElement = ElementTree.SubElement(paramElement, 'value')
+                                valueElement.text = str(valueParam)
+                elif val:
                     data_value.text = str(val)
 
         return ElementTree.tostring(request_xml, 'utf8', 'xml')
@@ -173,10 +196,7 @@ class PaymentSync(models.TransientModel):
         debit_lines = payment.move_line_ids.filtered(lambda l: l.debit)
         transactions = []
         for debit_line in debit_lines:
-            transaction = [
-                {"credit_account_code": debit_line.account_id.code},
-                {"total_amount": debit_line.debit},
-            ]
+            transaction = {"credit_account_code": debit_line.account_id.code, "total_amount": debit_line.debit}
             transactions.append(transaction)
 
         return [
