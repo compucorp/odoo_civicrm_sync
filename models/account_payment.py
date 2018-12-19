@@ -10,7 +10,7 @@ _logger = logging.getLogger(__name__)
 class account_payment(models.Model):
     _inherit = "account.payment"
 
-    x_civicrm_ids = fields.One2many('civicrm.financial.transaction', 'x_financial_transaction_id', string='CiviCrm financial transaction Ids',
+    x_civicrm_ids = fields.One2many('civicrm.financial.transaction', 'payment_id', string='CiviCrm financial transaction Ids',
                                     required=False, help='CiviCrm financial transaction Ids associated with this payment')
 
     x_sync_status = fields.Selection([

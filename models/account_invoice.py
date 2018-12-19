@@ -459,21 +459,21 @@ class AccountInvoice(models.Model):
         """ Checks payment exists in odoo, refunds invoice
          :param invoice: invoice object
         """
-        account_payment = self.env['account.payment']
+        civicrm_financial_transaction = self.env['civicrm.financial.transaction']
 
         x_civicrm_payment_ids = [payment_data.get('x_civicrm_id') for
                                  payment_data in
                                  self.vals.get('payments')]
-        payments = account_payment.with_context(active_test=False).search(
-            [('x_civicrm_id', 'in', x_civicrm_payment_ids)])
+        transactions = civicrm_financial_transaction.with_context(active_test=False).search(
+            [('x_financial_transaction_id', 'in', x_civicrm_payment_ids)])
 
         for payment_data in self.vals.get('payments'):
             _logger.debug('handling payment({})'.format(payment_data))
             x_civicrm_payment_id = payment_data.get('x_civicrm_id')
-            payment = payments.filtered(
-                lambda payment: payment.x_civicrm_id == x_civicrm_payment_id)
+            transaction_record = transactions.filtered(
+                lambda transaction: x_civicrm_payment_id in transaction.x_financial_transaction_id )
             amount = payment_data.get('amount')
-            if payment:
+            if transaction_record:
                 continue
 
             elif not payment_data.get('status') or amount < 0:

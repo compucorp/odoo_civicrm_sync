@@ -22,6 +22,15 @@ class PaymentSync(models.TransientModel):
          :return:
         """
         _logger.debug("Payment Sync Started")
+
+        x_civicrm_payment_ids = [356, 357]
+        civi_fin_ids = self.env['civicrm.financial.transaction'].with_context(active_test=False).search([('x_financial_transaction_id', 'in', x_civicrm_payment_ids)])
+        _logger.error(civi_fin_ids)
+        for a in civi_fin_ids:
+            _logger.error('AAADDDEE')
+            _logger.error(a.payment_id.amount)
+
+
         payments = self._get_awaiting_payments()
         if payments:
             self._process_payments(payments)
@@ -59,7 +68,7 @@ class PaymentSync(models.TransientModel):
         xml_doc = self._create_xml_with_data(data)
         response = self._do_request(url, api_key, site_key, xml_doc)
         _logger.debug('CiviCRM sync responce = {}'.format(response.text))
-        result = self._validate_sync_response(response, payment)
+        result = self._validate_sync_response(self, response, payment)
         self._change_payment_status(payment, 'synced' if not result else
         'failed')
         return result
@@ -146,11 +155,11 @@ class PaymentSync(models.TransientModel):
             })
         if prev_status == payment.x_sync_status:
             _logger.debug(
-                "Status of payment with civi_crm_id: {} was changed from {} to {}".
-                    format(payment.x_civicrm_id, prev_status, status))
+                "Status of payment with id: {} was changed from {} to {}".
+                    format(payment.id, prev_status, status))
 
     @staticmethod
-    def _validate_sync_response(response, payment):
+    def _validate_sync_response(self, response, payment):
         """ Validates response on failure
          :param response:
          :return:
@@ -172,10 +181,11 @@ class PaymentSync(models.TransientModel):
                 'x_error_log': error_message,
             })
         else:
-            transaction_id = int(result_set.find('transaction_id').text)
-            update.update({
-                'x_civicrm_id': transaction_id
-            })
+            for transactionElement in result_set.findall('transactions/record'):
+                transactions_id = int(transactionElement.find('id').text)
+                civi_transaction = self.env['civicrm.financial.transaction']
+                civi_transaction.create({'x_financial_transaction_id' : transactions_id, 'payment_id' : payment.id})
+
         payment.write(update)
         return bool(is_error)
 
