@@ -10,8 +10,8 @@ _logger = logging.getLogger(__name__)
 class account_payment(models.Model):
     _inherit = "account.payment"
 
-    x_civicrm_id = fields.Integer(string='Civicrm Id', required=False,
-                                  help='Civicrm Id')
+    x_civicrm_ids = fields.One2many('civicrm.financial.transaction', 'payment_id', string='CiviCrm financial transactions',
+                                    required=False, help='CiviCrm financial transaction associated with this payment')
 
     x_sync_status = fields.Selection([
         ('awaiting', 'Awaiting Sync'),
@@ -39,7 +39,7 @@ class account_payment(models.Model):
         invoices = payment.invoice_ids
         if invoices and len(invoices) > 1:
             return payment
-        invoice = invoices.filtered(lambda invoice: invoice.x_civicrm_id)
+        invoice = invoices.filtered(lambda invoice: invoice.x_civicrm_ids)
         if invoice and not payment.x_civicrm_id:
             payment.x_sync_status = 'awaiting'
         return payment

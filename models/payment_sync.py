@@ -55,7 +55,7 @@ class PaymentSync(models.TransientModel):
         xml_doc = self._create_xml_with_data(data)
         response = self._do_request(url, api_key, site_key, xml_doc)
         _logger.debug('CiviCRM sync responce = {}'.format(response.text))
-        result = self._validate_sync_response(response, payment)
+        result = self._validate_sync_response(self, response, payment)
         self._change_payment_status(payment, 'synced' if not result else
         'failed')
         return result
@@ -90,17 +90,32 @@ class PaymentSync(models.TransientModel):
         value = ElementTree.SubElement(param, 'value')
         struct = ElementTree.SubElement(value, 'struct')
 
-        for data in data:
-            for key, val in data.items():
-                financial_trxn = ElementTree.SubElement(struct,
-                                                        'financial_trxn')
-                name = ElementTree.SubElement(financial_trxn, 'name')
-                name.text = str(key)
-                data_value = ElementTree.SubElement(financial_trxn, 'value')
-                if val:
-                    data_value.text = str(val)
+        PaymentSync.generate_financial_trxn_xml(struct, data)
 
         return ElementTree.tostring(request_xml, 'utf8', 'xml')
+
+    @staticmethod
+    def generate_financial_trxn_xml(parentElement, data):
+        for record in data:
+            for trxnKey, trxVal in record.items():
+                financial_trxn_element = ElementTree.SubElement(parentElement, 'financial_trxn')
+
+                financial_trxn_name_element = ElementTree.SubElement(financial_trxn_element, 'name')
+                financial_trxn_name_element.text = str(trxnKey)
+
+                financial_trxn_value_element = ElementTree.SubElement(financial_trxn_element, 'value')
+                if trxVal and type(trxVal) is list:
+                    trxn_list_parent_element = ElementTree.SubElement(financial_trxn_value_element, 'list')
+                    for param in trxVal:
+                        sub_record_element = ElementTree.SubElement(trxn_list_parent_element, 'record')
+                        for nameParam, valueParam in param.items():
+                            param_element = ElementTree.SubElement(sub_record_element, 'param')
+                            param_name_element = ElementTree.SubElement(param_element, 'name')
+                            param_name_element.text = str(nameParam)
+                            param_value_element = ElementTree.SubElement(param_element, 'value')
+                            param_value_element.text = str(valueParam)
+                elif trxVal:
+                    financial_trxn_value_element.text = str(trxVal)
 
     def _change_payment_status(self, payment, status):
         """ Changes status of payment according to
@@ -123,11 +138,11 @@ class PaymentSync(models.TransientModel):
             })
         if prev_status == payment.x_sync_status:
             _logger.debug(
-                "Status of payment with civi_crm_id: {} was changed from {} to {}".
-                    format(payment.x_civicrm_id, prev_status, status))
+                "Status of payment with id: {} was changed from {} to {}".
+                    format(payment.id, prev_status, status))
 
     @staticmethod
-    def _validate_sync_response(response, payment):
+    def _validate_sync_response(self, response, payment):
         """ Validates response on failure
          :param response:
          :return:
@@ -149,10 +164,13 @@ class PaymentSync(models.TransientModel):
                 'x_error_log': error_message,
             })
         else:
-            transaction_id = int(result_set.find('transaction_id').text)
-            update.update({
-                'x_civicrm_id': transaction_id
-            })
+            for transactionElement in result_set.findall('transactions/record'):
+                transactions_id_element = transactionElement.find('id')
+                if transactions_id_element:
+                    transactions_id = int(transactions_id_element.text)
+                    civi_transaction = self.env['civicrm.financial.transaction']
+                    civi_transaction.create({'x_financial_transaction_id': transactions_id, 'payment_id': payment.id})
+
         payment.write(update)
         return bool(is_error)
 
@@ -169,15 +187,20 @@ class PaymentSync(models.TransientModel):
         dt = datetime.strptime(payment.payment_date, DATE_FORMAT)
         payment_date = time.mktime(dt.timetuple())
         invoice_state = payment_to_invoice.state
-        debit_line = payment.move_line_ids.filtered(lambda l: l.debit)
+
+        debit_lines = payment.move_line_ids.filtered(lambda l: l.debit)
+        transactions = []
+        for debit_line in debit_lines:
+            transaction = {"credit_account_code": debit_line.account_id.code, "total_amount": debit_line.debit}
+            transactions.append(transaction)
+
         return [
             {"to_financial_account_name": payment.journal_id.name},
-            {"total_amount": payment.amount},
             {"trxn_date": int(payment_date)},
             {"currency": payment.currency_id.name},
             {"invoice_id": payment_to_invoice.x_civicrm_id},
-            {"credit_account_code": debit_line.account_id.code},
             {"contribution_status": self._convert_invoice_state(invoice_state)},
+            {"transactions": transactions},
         ]
 
     @staticmethod
