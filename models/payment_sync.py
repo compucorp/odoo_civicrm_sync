@@ -24,6 +24,8 @@ class PaymentSync(models.TransientModel):
         _logger.debug("Payment Sync Started")
         payments = self._get_awaiting_payments()
         if payments:
+            _logger.error("A11111111111")
+            _logger.error(payments)
             self._process_payments(payments)
         else:
             _logger.debug("No payments were found")
@@ -35,7 +37,10 @@ class PaymentSync(models.TransientModel):
         """
         for payment in payments:
             if not payment.invoice_ids:
+                _logger.error("A22222222222222")
                 continue
+            _logger.error("A3333333333333333333333")
+            _logger.error(payment)
             self._sync_single_payment(payment)
         self._send_error_email(payments)
 
