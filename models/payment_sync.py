@@ -191,11 +191,14 @@ class PaymentSync(models.TransientModel):
         debit_lines = payment.move_line_ids.filtered(lambda l: l.debit)
         transactions = []
         for debit_line in debit_lines:
-            transaction = {"credit_account_code": debit_line.account_id.code, "total_amount": debit_line.debit}
+            transaction = {"account_code": debit_line.account_id.code, "total_amount": debit_line.debit}
             transactions.append(transaction)
 
+        credit_lines = payment.move_line_ids.filtered(lambda l: l.credit)
+        first_credit_line_account_code = credit_lines[0].account_id.code
+
         return [
-            {"to_financial_account_name": payment.journal_id.name},
+            {"from_financial_account_code": first_credit_line_account_code},
             {"trxn_date": int(payment_date)},
             {"currency": payment.currency_id.name},
             {"invoice_id": payment_to_invoice.x_civicrm_id},
