@@ -44,7 +44,7 @@ class PaymentSync(models.TransientModel):
          :param payment: account_payment model
          :return: bool True on success, False on failure
         """
-        _logger.debug("Syncing Payment with Id: " + payment.id)
+        _logger.debug("Syncing Payment with Id: " + str(payment.id))
 
         # get url to sync
         url = self.env.user.company_id.civicrm_instance_url
