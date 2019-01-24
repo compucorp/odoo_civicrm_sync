@@ -219,12 +219,14 @@ class PaymentSync(models.TransientModel):
         return convert_map.get(state, state)
 
     def _get_awaiting_payments(self):
-        """ Gets payments from db
+        """ Gets the non draft payments that
+            are awaiting to be synced to CiviCrm
          :return: account_payment models list
         """
         return self.env['account.payment'].search(
             [
                 ('x_sync_status', '=', 'awaiting'),
+                ('state', '!=', 'draft'),
                 ('payment_date', '<=', fields.Date.today())
             ],
         )
