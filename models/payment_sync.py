@@ -226,7 +226,7 @@ class PaymentSync(models.TransientModel):
         return self.env['account.payment'].search(
             [
                 ('x_sync_status', '=', 'awaiting'),
-                ('state', '!=', 'draft'),
+                ('state', 'not in', ('draft', 'cancelled')),
                 ('payment_date', '<=', fields.Date.today())
             ],
         )
