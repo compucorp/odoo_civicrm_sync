@@ -168,7 +168,7 @@ class PaymentSync(models.TransientModel):
         else:
             for transactionElement in result_set.findall('transactions/record'):
                 transactions_id_element = transactionElement.find('id')
-                if transactions_id_element:
+                if transactions_id_element is not None:
                     transactions_id = int(transactions_id_element.text)
                     civi_transaction = self.env['civicrm.financial.transaction']
                     civi_transaction.create({'x_financial_transaction_id': transactions_id, 'payment_id': payment.id})
