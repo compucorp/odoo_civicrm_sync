@@ -472,7 +472,7 @@ class AccountInvoice(models.Model):
             amount = payment_data.get('amount')
             x_civicrm_payment_id = payment_data.get('x_civicrm_id')
             transaction_record = transactions.filtered(
-                lambda transaction: x_civicrm_payment_id in transaction.x_financial_transaction_id )
+                lambda transaction: x_civicrm_payment_id == transaction.x_financial_transaction_id )
             if transaction_record:
                 continue
 
