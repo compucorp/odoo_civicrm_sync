@@ -39,6 +39,11 @@ class account_payment(models.Model):
         invoices = payment.invoice_ids
         if invoices and len(invoices) > 1:
             return payment
+
+        if 'x_civicrm_id' in vals:
+            civi_transaction = self.env['civicrm.financial.transaction']
+            civi_transaction.create({'x_financial_transaction_id': vals.get('x_civicrm_id'), 'payment_id': payment.id})
+
         invoice = invoices.filtered(lambda invoice: invoice.x_civicrm_id)
         if invoice and not payment.x_civicrm_ids:
             payment.x_sync_status = 'awaiting'
