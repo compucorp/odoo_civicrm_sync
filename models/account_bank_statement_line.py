@@ -32,7 +32,7 @@ class AccountBankStatementLine(models.Model):
     def _get_after_reconciliation_payment_and_invoice(self, data):
         try:
             self.env.cr.execute("""
-            SELECT aml.pa  yment_id, amamlr.account_invoice_id FROM account_move_line AS aml 
+            SELECT aml.payment_id, amamlr.account_invoice_id FROM account_move_line AS aml 
             INNER JOIN  account_invoice_account_move_line_rel as amamlr ON amamlr.account_move_line_id = aml.id 
             WHERE aml.name = %s AND aml.partner_id = %s AND credit > 0 LIMIT 1""",
                                 (data[0]['counterpart_aml_dicts'][0]['name'], data[0]['partner_id']))

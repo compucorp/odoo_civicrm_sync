@@ -40,7 +40,8 @@ class PaymentSync(models.TransientModel):
         self._send_error_email(payments)
 
     def _get_reconciled_payment_invoice_id(self, payment_id):
-        self.env.cr.execute("""SELECT aiamlr.account_invoice_id FROM account_payment AS ap 
+        self.env.cr.execute("""
+        SELECT aiamlr.account_invoice_id FROM account_payment AS ap 
         INNER JOIN account_move_line AS aml ON ap.id = aml.payment_id 
         INNER JOIN account_invoice_account_move_line_rel AS aiamlr ON aml.id = aiamlr.account_move_line_id 
         WHERE ap.id = %s and aml.credit > 0 LIMIT 1""",
@@ -198,7 +199,7 @@ class PaymentSync(models.TransientModel):
             payment_to_invoice = max(payment.invoice_ids)
 
         if not payment_to_invoice:
-            connected_invoice_id = self._get_reconciled_payment_invoice(payment.id)
+            connected_invoice_id = self._get_reconciled_payment_invoice_id(payment.id)
             if not connected_invoice_id:
                 raise UserError('No invoice connected to payment was found')
             else:
