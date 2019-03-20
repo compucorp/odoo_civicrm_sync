@@ -34,10 +34,22 @@ class PaymentSync(models.TransientModel):
          :return: list of failed payments
         """
         for payment in payments:
-            if not payment.invoice_ids:
+            if (not payment.invoice_ids) and (not self._get_reconciled_payment_invoice_id(payment.id)):
                 continue
             self._sync_single_payment(payment)
         self._send_error_email(payments)
+
+    def _get_reconciled_payment_invoice_id(self, payment_id):
+        self.env.cr.execute("""SELECT aiamlr.account_invoice_id FROM account_payment AS ap 
+        INNER JOIN account_move_line AS aml ON ap.id = aml.payment_id 
+        INNER JOIN account_invoice_account_move_line_rel AS aiamlr ON aml.id = aiamlr.account_move_line_id 
+        WHERE ap.id = %s and aml.credit > 0 LIMIT 1""",
+                            (payment_id,))
+        record = self.env.cr.fetchone()
+        if record:
+            return record[0]
+        else:
+            return None
 
     def _sync_single_payment(self, payment):
         """ Syncs single record of Payment to CiviCRM
@@ -181,10 +193,16 @@ class PaymentSync(models.TransientModel):
          :param payment: account_payment model
          :return: dict with data
         """
-        payment_to_invoice = max(payment.invoice_ids)
+        payment_to_invoice = None
+        if payment.invoice_ids:
+            payment_to_invoice = max(payment.invoice_ids)
 
         if not payment_to_invoice:
-            raise UserError('No invoice connected to payment was found')
+            connected_invoice_id = self._get_reconciled_payment_invoice(payment.id)
+            if not connected_invoice_id:
+                raise UserError('No invoice connected to payment was found')
+            else:
+                payment_to_invoice = self.env['account.invoice'].search([('id', '=', connected_invoice_id)])
 
         dt = datetime.strptime(payment.payment_date, DATE_FORMAT)
         payment_date = time.mktime(dt.timetuple())
