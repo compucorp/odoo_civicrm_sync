@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import logging
+import traceback
 import requests
 import time
 import xml.etree.ElementTree as ElementTree
@@ -59,21 +60,26 @@ class PaymentSync(models.TransientModel):
         """
         _logger.debug("Syncing Payment with Id: " + str(payment.id))
 
-        # get url to sync
-        url = self.env.user.company_id.civicrm_instance_url
-        api_key = self.env.user.company_id.civicrm_api_key
-        site_key = self.env.user.company_id.civicrm_site_key
-        if not url or not api_key or not site_key:
-            raise UserError("CiviCRM setting not filled")
+        try:
+            # get url to sync
+            url = self.env.user.company_id.civicrm_instance_url
+            api_key = self.env.user.company_id.civicrm_api_key
+            site_key = self.env.user.company_id.civicrm_site_key
 
-        data = self._fill_sync_data(payment)
-        xml_doc = self._create_xml_with_data(data)
-        response = self._do_request(url, api_key, site_key, xml_doc)
-        _logger.debug('CiviCRM sync responce = {}'.format(response.text))
-        result = self._validate_sync_response(self, response, payment)
-        self._change_payment_status(payment, 'synced' if not result else
-        'failed')
-        return result
+            data = self._fill_sync_data(payment)
+            xml_doc = self._create_xml_with_data(data)
+            response = self._do_request(url, api_key, site_key, xml_doc)
+
+            _logger.debug('CiviCRM sync responce = {}'.format(response.text))
+            result = self._validate_sync_response(self, response, payment)
+            self._change_payment_status(payment, 'synced' if not result else
+            'failed')
+            return result
+        except:
+            self._change_payment_status(payment, 'failed')
+            trace = traceback.format_exc()
+            payment.x_error_log = trace
+
 
     @staticmethod
     def _do_request(url, api_key, site_key, xml_doc):
