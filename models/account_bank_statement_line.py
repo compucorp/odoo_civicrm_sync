@@ -35,7 +35,15 @@ class AccountBankStatementLine(models.Model):
             if data_dict['partner_id']:
                 partner_id = data_dict['partner_id']
             else:
-                partner_id = data_dict['counterpart_aml_dicts'][0]['partner_id']
+                account_move_line_id = data_dict['counterpart_aml_dicts'][0]['counterpart_aml_id']
+                account_move_line = self.env['account.move.line'].search([('id', '=', account_move_line_id)])
+                if account_move_line.partner_id:
+                    partner = account_move_line.partner_id
+                    partner_id = partner.id
+
+                else:
+                    return None
+
             self.env.cr.execute("""
             SELECT aml.payment_id, amamlr.account_invoice_id FROM account_move_line AS aml 
             INNER JOIN  account_invoice_account_move_line_rel as amamlr ON amamlr.account_move_line_id = aml.id 
