@@ -139,8 +139,7 @@ class AccountInvoice(models.Model):
             'account_code': ParamType(int, True, self.lookup_id, None, 100),
             'invoice_journal_name': ParamType(str, False, self.lookup_id, 'Customer Invoices', 100),
             'currency_code': ParamType(str, False, self.lookup_id, None, 100),
-            'date_invoice': ParamType(int, False, self.convert_timestamp_param,
-                                      None, 100),
+            'date_invoice': ParamType(str, False, None, None, 100),
             'line_items': {
                 'x_civicrm_id': ParamType(int, False, None, None, 100),
                 'product_code': ParamType(str, False, self.lookup_id, None, 100),
@@ -159,8 +158,7 @@ class AccountInvoice(models.Model):
                 'is_payment': ParamType(int, False, None, None, 100),
                 'status': ParamType(str, True, None, '', 100),
                 'amount': ParamType(float, False, None, None, 100),
-                'payment_date': ParamType((int, str), False,
-                                          self.convert_timestamp_param, None, 100),
+                'payment_date': ParamType(str, False, None, None, 100),
                 'currency_code': ParamType(str, False, self.lookup_id, None, 100),
                 'payment_type': ParamType(str, False, None, 'inbound', 100),
                 'payment_method_id': ParamType(int, False, None, 1, 100),
@@ -169,9 +167,8 @@ class AccountInvoice(models.Model):
             'refund': {
                 'filter_refund': ParamType(str, False, None, 'refund', 100),
                 'description': ParamType(str, False, None, '', 100),
-                'date': ParamType(int, False, self.convert_timestamp_param,
-                                  None, 100),
-                'date_invoice': ParamType(int, False, self._duplicate_field, 0, 101),
+                'date': ParamType(str, False, None, None, 100),
+                'date_invoice': ParamType(str, False, self._duplicate_field, 0, 101),
             },
         }
         self._model_name = ''
