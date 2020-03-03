@@ -41,11 +41,6 @@ LOOK_UP_MAP = {
                                 'x_civicrm_id'),
 }
 
-DUPLICATE_MAP = {
-    'refund_date_invoice': 'date'
-}
-
-
 class AccountInvoiceLine(models.Model):
     _inherit = "account.invoice.line"
 
@@ -168,7 +163,7 @@ class AccountInvoice(models.Model):
                 'filter_refund': ParamType(str, False, None, 'refund', 100),
                 'description': ParamType(str, False, None, '', 100),
                 'date': ParamType(str, False, None, None, 100),
-                'date_invoice': ParamType(str, False, self._duplicate_field, 0, 101),
+                'date_invoice':  ParamType(str, False, None, None, 100),
             },
         }
         self._model_name = ''
@@ -218,15 +213,6 @@ class AccountInvoice(models.Model):
 
         if value is not None and param_type.convert_method:
             param_type.convert_method(key=key, value=value, vals=vals)
-
-    def _duplicate_field(self, **kwargs):
-        """ Copy value from another field according to the DUPLICATE_MAP
-         :param kwargs: dictionary with value for duplicate
-        """
-        key = kwargs.get('key')
-        vals = kwargs.get('vals')
-        duplicate_fild_name = DUPLICATE_MAP.get('{}_{}'.format(self._model_name, key))
-        vals[key] = vals.get(duplicate_fild_name)
 
     def lookup_id(self, **kwargs):
         """ Lookups the ODOO ids
